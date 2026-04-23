@@ -260,6 +260,13 @@ def send_sms_async(phone_number, service_choice):
 # ==========================================
 # SECURE AUTHENTICATION ROUTES
 # ==========================================
+
+# ==========================================
+# ROOT REDIRECT
+# ==========================================
+@app.route('/')
+def home():
+    return redirect('/login')
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
