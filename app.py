@@ -300,8 +300,11 @@ def logout():
 def register_admin():
     if request.method == 'POST':
         conn = get_db_connection()
-        # Enforce the 10 Agent Limit (Only counting approved agents)
-        agent_count = conn.execute("SELECT COUNT(*) FROM admins WHERE role = 'agent' AND status = 'approved'").fetchone()[0]
+        
+        # FIX 1: Safely count agents using a labeled column 'total' for both databases
+        count_row = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND status = 'approved'").fetchone()
+        agent_count = count_row['total']
+        
         if agent_count >= 10:
             conn.close()
             return render_template('login.html', view='register', error="System Full: Maximum of 10 Regional Agents reached.")
@@ -324,7 +327,9 @@ def register_admin():
             conn.commit()
             msg = "Request sent! Please wait for the Main Admin to approve your account."
             return redirect(f'/login?msg={msg}')
-        except sqlite3.IntegrityError:
+            
+        # FIX 2: Catch duplicate ID errors from BOTH SQLite and PostgreSQL
+        except (sqlite3.IntegrityError, psycopg2.IntegrityError):
             return render_template('login.html', view='register', error="Administrator ID already exists.")
         finally:
             conn.close()
