@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Admin Portal - MaizeConnect</title>
+    <style>
+        body { font-family: 'Times New Roman', serif; background-color: #e9ecef; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: white; padding: 40px; border-radius: 4px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); width: 350px; text-align: center; border-top: 5px solid #2c3e50; }
+        h2 { color: #2c3e50; margin-bottom: 20px; }
+        input, select { width: 90%; padding: 12px; margin: 10px 0; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; box-sizing: border-box; }
+        button { background-color: #2c3e50; color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; margin-top: 15px; }
+        button:hover { background-color: #1a252f; }
+        .error { color: #e74c3c; font-size: 14px; font-weight: bold; margin-bottom: 10px; }
+        .success { color: #27ae60; font-size: 14px; font-weight: bold; margin-bottom: 10px; }
+        .link { display: inline-block; margin: 15px 10px 0 10px; font-size: 14px; color: #2c3e50; text-decoration: none; }
+        .link:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        
+        {% if view == 'register' %}
+            <h2>Register Administrator</h2>
+            {% if error %} <p class="error">{{ error }}</p> {% endif %}
+            <form method="POST" action="/register_admin">
+                <input type="text" name="username" placeholder="Choose Administrator ID" required>
+                <input type="password" name="password" placeholder="Create Passcode" required>
+                
+                <select name="province" required>
+                    <option value="" disabled selected>Assign Province</option>
+                    <option value="Harare">Harare</option>
+                    <option value="Bulawayo">Bulawayo</option>
+                    <option value="Manicaland">Manicaland</option>
+                    <option value="Midlands">Midlands</option>
+                    <option value="Masvingo">Masvingo</option>
+                    <option value="Mashonaland West">Mashonaland West</option>
+                    <option value="Mashonaland Central">Mashonaland Central</option>
+                    <option value="Mashonaland East">Mashonaland East</option>
+                    <option value="Matabeleland South">Matabeleland South</option>
+                    <option value="Matabeleland North">Matabeleland North</option>
+                </select>
+
+                <select name="security_question" required>
+                    <option value="" disabled selected>Select Security Question</option>
+                    <option value="What city were you born in?">What city were you born in?</option>
+                    <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                    <option value="What was the name of your first school?">What was the name of your first school?</option>
+                </select>
+                
+                <input type="text" name="security_answer" placeholder="Security Answer" required>
+                <button type="submit">Create Account</button>
+            </form>
+            <a href="/login" class="link">Back to Login</a>
+
+        {% elif view == 'forgot' %}
+            <h2>System Recovery</h2>
+            {% if error %} <p class="error">{{ error }}</p> {% endif %}
+            
+            {% if step == 1 %}
+                <p style="font-size: 14px; color: #555;">Enter your Administrator ID to retrieve your security question.</p>
+                <form method="POST" action="/forgot_password">
+                    <input type="text" name="username" placeholder="Administrator ID" required>
+                    <button type="submit" name="fetch_question">Find Account</button>
+                </form>
+            {% else %}
+                <p class="success">Account located.</p>
+                <form method="POST" action="/forgot_password">
+                    <input type="hidden" name="username" value="{{ username }}">
+                    <div style="background-color: #f8f9fa; padding: 10px; border-radius: 4px; border-left: 4px solid #2c3e50; text-align: left; margin: 15px 0;">
+                        <span style="font-size: 12px; color: #7f8c8d; text-transform: uppercase;">Security Question:</span><br>
+                        <strong>{{ question }}</strong>
+                    </div>
+                    <input type="text" name="security_answer" placeholder="Your Answer" required>
+                    <input type="password" name="new_password" placeholder="New Passcode" required>
+                    <button type="submit" name="reset_password">Reset Passcode</button>
+                </form>
+            {% endif %}
+            <a href="/login" class="link">Back to Login</a>
+
+        {% else %}
+            <h2>System Login</h2>
+            {% if request.args.get('msg') %} <p class="success">{{ request.args.get('msg') }}</p> {% endif %}
+            {% if error %} <p class="error">{{ error }}</p> {% endif %}
+            
+            <form method="POST" action="/login">
+                <input type="text" name="username" placeholder="Administrator ID" required>
+                <input type="password" name="password" placeholder="Passcode" required>
+                <button type="submit">Authenticate</button>
+            </form>
+            <div style="margin-top: 20px;">
+                <a href="/forgot_password" class="link">Forgot Passcode?</a>
+                <a href="/register_admin" class="link">Register New Admin</a>
+            </div>
+        {% endif %}
+        
+    </div>
+</body>
+</html>

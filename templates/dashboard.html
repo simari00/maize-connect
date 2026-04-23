@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Panel - MaizeConnect</title>
+    <style>
+        /* ==========================================
+           ENTERPRISE CSS RESET & BASE
+           ========================================== */
+        :root {
+            --primary: #2c3e50;
+            --secondary: #e67e22;
+            --secondary-hover: #d35400;
+            --success: #27ae60;
+            --danger: #e74c3c;
+            --warning: #f39c12;
+            --background: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-main: #333333;
+            --text-muted: #7f8c8d;
+            --border: #e2e8f0;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
+            background-color: var(--background); 
+            color: var(--text-main); 
+            line-height: 1.6; 
+            padding: 20px;
+        }
+
+        /* ==========================================
+           LAYOUT & CARDS
+           ========================================== */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+            margin-bottom: 30px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid var(--border);
+        }
+
+        .header h1 { font-size: 1.8rem; color: var(--primary); }
+        .header p { color: var(--text-muted); font-size: 0.9rem; width: 100%; margin-top: -10px; }
+
+        .header-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            padding: 25px;
+            margin-bottom: 30px;
+            border: 1px solid var(--border);
+        }
+
+        .card-header { margin-bottom: 20px; color: var(--primary); font-size: 1.4rem; border-bottom: 2px solid var(--border); padding-bottom: 10px; }
+
+        .alert {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 6px;
+            margin-bottom: 25px;
+            font-weight: 600;
+            border-left: 5px solid var(--success);
+        }
+
+        /* ==========================================
+           RESPONSIVE FORMS (CSS GRID)
+           ========================================== */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 15px;
+        }
+
+        @media (min-width: 768px) {
+            .form-grid { grid-template-columns: 1fr 1fr; }
+            .full-width { grid-column: span 2; }
+        }
+
+        .input-group { display: flex; flex-direction: column; }
+        
+        label { font-weight: 600; margin-bottom: 6px; font-size: 0.9rem; color: var(--primary); }
+        
+        input, select {
+            padding: 12px;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 1rem;
+            transition: border-color 0.3s;
+            background-color: #f8fafc;
+            width: 100%;
+        }
+        
+        input:focus, select:focus {
+            outline: none;
+            border-color: var(--secondary);
+            background-color: #fff;
+        }
+
+        input:disabled, select:disabled { background-color: #e2e8f0; cursor: not-allowed; color: #7f8c8d; }
+
+        /* Password Visibility Toggle Styles */
+        .password-wrapper {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+        
+        .password-wrapper input {
+            padding-right: 40px; /* Make room for the eye icon */
+        }
+        
+        .toggle-password {
+            position: absolute;
+            right: 10px;
+            background: none;
+            border: none;
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 0;
+            margin: 0;
+            width: auto;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .toggle-password:hover { background: none; opacity: 0.7; }
+
+        /* ==========================================
+           BUTTONS
+           ========================================== */
+        button {
+            padding: 12px 20px;
+            border-radius: 6px;
+            border: none;
+            font-weight: bold;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+        }
+
+        .btn-main { background-color: var(--secondary); color: white; width: 100%; margin-top: 15px; }
+        .btn-main:hover { background-color: var(--secondary-hover); }
+        
+        .btn-blue { background-color: #3498db; color: white; width: 100%; }
+        .btn-blue:hover { background-color: #2980b9; }
+
+        .btn-logout { background-color: #95a5a6; color: white; }
+        .btn-logout:hover { background-color: #7f8c8d; }
+
+        .btn-settings { background-color: var(--primary); color: white; }
+        .btn-settings:hover { background-color: #1a252f; }
+
+        .action-btn { padding: 8px 12px; font-size: 0.85rem; border-radius: 4px; margin-right: 5px; margin-bottom: 5px; color: white; }
+        .edit-btn { background-color: var(--success); }
+        .edit-btn:hover { background-color: #219150; }
+        .delete-btn { background-color: var(--danger); }
+        .delete-btn:hover { background-color: #c0392b; }
+        .approve-btn { background-color: var(--success); }
+
+        /* ==========================================
+           RESPONSIVE TABLES (SWIPEABLE)
+           ========================================== */
+        .table-responsive {
+            width: 100%;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 6px;
+            border: 1px solid var(--border);
+            margin-top: 20px;
+            background: white;
+        }
+
+        table { width: 100%; border-collapse: collapse; min-width: 700px; }
+        
+        th, td { padding: 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
+        th { background-color: #f8fafc; color: var(--primary); font-weight: 700; white-space: nowrap; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover { background-color: #f1f5f9; }
+        
+        .actions-cell { white-space: nowrap; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        
+        <div class="header">
+            <div>
+                <h1>MaizeConnect Admin Panel</h1>
+            </div>
+            <div class="header-buttons">
+                <button onclick="toggleSettings()" class="btn-settings" style="padding: 8px 15px; font-size: 0.9rem;">⚙️ Account Settings</button>
+                <form action="/logout" method="GET" style="margin: 0;">
+                    <button type="submit" class="btn-logout" style="padding: 8px 15px; font-size: 0.9rem;">Secure Logout</button>
+                </form>
+            </div>
+            <p>Enterprise data management terminal. Logged in as: <strong>{{ current_user.username }}</strong> ({{ current_user.role|title }})</p>
+        </div>
+
+        {% if message %}
+            <div class="alert">
+                {% if 'Error' in message %} 🔴 {% else %} 🟢 {% endif %} 
+                {{ message }}
+            </div>
+        {% endif %}
+
+        <div class="card" id="settingsCard" style="display: none; border-top: 5px solid var(--primary);">
+            <h2 class="card-header">Update Credentials</h2>
+            <form action="/admin/settings" method="POST">
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>Administrator ID:</label>
+                        <input type="text" name="new_username" value="{{ current_user.username }}" required>
+                    </div>
+                    
+                    <div class="input-group">
+                        <label>New Passcode (Leave blank to keep current):</label>
+                        <div class="password-wrapper">
+                            <input type="password" name="new_password" id="new_password" placeholder="Enter new passcode if changing">
+                            <button type="button" class="toggle-password" onclick="togglePasswordVisibility('new_password', this)" title="Show/Hide Password">👁️</button>
+                        </div>
+                    </div>
+
+                    <div class="input-group">
+                        <label>New Security Question:</label>
+                        <select name="security_question" required>
+                            <option value="What city were you born in?">What city were you born in?</option>
+                            <option value="What is your mother's maiden name?">What is your mother's maiden name?</option>
+                            <option value="What was the name of your first school?">What was the name of your first school?</option>
+                        </select>
+                    </div>
+                    <div class="input-group">
+                        <label>New Security Answer:</label>
+                        <input type="text" name="security_answer" placeholder="Provide answer for recovery" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-main full-width" style="background-color: var(--primary);">Update My Profile</button>
+            </form>
+        </div>
+
+        <div class="card">
+            <h2 class="card-header">1. Market Prices Database</h2>
+            <form action="/admin/market" method="POST">
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>Select Province:</label>
+                        <select name="province" id="market_province" required {% if current_user.role == 'agent' %}disabled{% endif %}>
+                            <option value="{{ current_user.province }}" selected>{{ current_user.province }} (Your Assigned Region)</option>
+                            {% if current_user.role == 'main_admin' %}
+                                <option value="Harare">Harare (Harare)</option>
+                                <option value="Bulawayo">Bulawayo (Bulawayo)</option>
+                                <option value="Manicaland">Mutare (Manicaland)</option>
+                                <option value="Midlands">Gweru (Midlands)</option>
+                                <option value="Masvingo">Masvingo (Masvingo)</option>
+                                <option value="Mashonaland West">Chinhoyi (Mashonaland West)</option>
+                                <option value="Mashonaland Central">Bindura (Mashonaland Central)</option>
+                                <option value="Mashonaland East">Marondera (Mashonaland East)</option>
+                                <option value="Matabeleland South">Gwanda (Matabeleland South)</option>
+                                <option value="Matabeleland North">Lupane (Matabeleland North)</option>
+                            {% endif %}
+                        </select>
+                        {% if current_user.role == 'agent' %}
+                            <input type="hidden" name="province" value="{{ current_user.province }}">
+                        {% endif %}
+                    </div>
+
+                    <div class="input-group">
+                        <label>Town / City Name:</label>
+                        <input type="text" name="town" id="market_town" placeholder="e.g., Karoi" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Shop / Market Name:</label>
+                        <input type="text" name="market_name" id="market_name" placeholder="e.g., GMB Chinhoyi" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Price per Ton ($):</label>
+                        <input type="text" name="price" id="market_price" placeholder="e.g., 390.00" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-main full-width">Save / Update Market Price</button>
+            </form>
+
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Province</th>
+                            <th>Town/City</th>
+                            <th>Shop/Market Name</th>
+                            <th>Price/Ton</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in markets %}
+                        <tr>
+                            <td>{{ row.province }}</td>
+                            <td>{{ row.town }}</td>
+                            <td>{{ row.market_name }}</td>
+                            <td><strong>${{ row.price_per_ton }}</strong></td>
+                            <td class="actions-cell">
+                                <button class="action-btn edit-btn" onclick="editMarket('{{ row.province }}', '{{ row.town }}', '{{ row.market_name }}', '{{ row.price_per_ton }}')">Edit</button>
+                                <form action="/admin/market/delete/{{ row.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete this specific market record?');">
+                                    <button type="submit" class="action-btn delete-btn">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-header">2. Farming Inputs Database</h2>
+            <form action="/admin/input" method="POST">
+                <div class="form-grid">
+                    <div class="input-group">
+                        <label>Select Province:</label>
+                        <select name="province" id="input_province" required {% if current_user.role == 'agent' %}disabled{% endif %}>
+                            <option value="{{ current_user.province }}" selected>{{ current_user.province }} (Your Assigned Region)</option>
+                            {% if current_user.role == 'main_admin' %}
+                                <option value="Harare">Harare (Harare)</option>
+                                <option value="Bulawayo">Bulawayo (Bulawayo)</option>
+                                <option value="Manicaland">Mutare (Manicaland)</option>
+                                <option value="Midlands">Gweru (Midlands)</option>
+                                <option value="Masvingo">Masvingo (Masvingo)</option>
+                                <option value="Mashonaland West">Chinhoyi (Mashonaland West)</option>
+                                <option value="Mashonaland Central">Bindura (Mashonaland Central)</option>
+                                <option value="Mashonaland East">Marondera (Mashonaland East)</option>
+                                <option value="Matabeleland South">Gwanda (Matabeleland South)</option>
+                                <option value="Matabeleland North">Lupane (Matabeleland North)</option>
+                            {% endif %}
+                        </select>
+                        {% if current_user.role == 'agent' %}
+                            <input type="hidden" name="province" value="{{ current_user.province }}">
+                        {% endif %}
+                    </div>
+
+                    <div class="input-group">
+                        <label>Town / City Name:</label>
+                        <input type="text" name="town" id="input_town" placeholder="e.g., Mvurwi" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Supplier Name:</label>
+                        <input type="text" name="supplier" id="input_supplier" placeholder="e.g., Farm & City" required>
+                    </div>
+
+                    <div class="input-group">
+                        <label>Item Description:</label>
+                        <input type="text" name="item" id="input_item" placeholder="e.g., SeedCo Pan 53 - 25kg" required>
+                    </div>
+                    
+                    <div class="input-group full-width">
+                        <label>Price ($):</label>
+                        <input type="text" name="price" id="input_price" placeholder="e.g., 115.00" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn-main full-width">Save / Update Input Price</button>
+            </form>
+
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Province</th>
+                            <th>Town/City</th>
+                            <th>Supplier Shop</th>
+                            <th>Item</th>
+                            <th>Price</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in inputs %}
+                        <tr>
+                            <td>{{ row.province }}</td>
+                            <td>{{ row.town }}</td>
+                            <td>{{ row.supplier_name }}</td>
+                            <td>{{ row.item_name }}</td>
+                            <td><strong>${{ row.price }}</strong></td>
+                            <td class="actions-cell">
+                                <button class="action-btn edit-btn" onclick="editInput('{{ row.province }}', '{{ row.town }}', '{{ row.supplier_name }}', '{{ row.item_name }}', '{{ row.price }}')">Edit</button>
+                                <form action="/admin/input/delete/{{ row.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Delete this specific input record?');">
+                                    <button type="submit" class="action-btn delete-btn">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2 class="card-header">3. System Maintenance</h2>
+            <p style="margin-bottom: 15px;">Click below to fetch the latest weather for all 10 provinces from the Visual Crossing API.</p>
+            <form action="/admin/sync_weather" method="POST">
+                <button type="submit" class="btn-blue">Force National Weather Sync</button>
+            </form>
+        </div>
+
+        {% if current_user.role == 'main_admin' %}
+        <div class="card" style="border-top: 5px solid var(--danger);">
+            <h2 class="card-header" style="color: var(--danger); border-bottom: none;">4. Hierarchy & Agent Management</h2>
+
+            <div style="margin-bottom: 30px;">
+                <h3 style="color: var(--warning); margin-bottom: 10px;">Pending Agent Requests</h3>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Agent ID</th>
+                                <th>Requested Province</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for agent in pending_agents %}
+                            <tr>
+                                <td><strong>{{ agent.username }}</strong></td>
+                                <td>{{ agent.province }}</td>
+                                <td class="actions-cell">
+                                    <form action="/admin/agent/approve/{{ agent.id }}" method="POST" style="display:inline;">
+                                        <button type="submit" class="action-btn approve-btn">Approve</button>
+                                    </form>
+                                    <form action="/admin/agent/delete/{{ agent.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Reject and delete this request?');">
+                                        <button type="submit" class="action-btn delete-btn">Reject</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No pending requests at this time.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div>
+                <h3 style="color: var(--danger); margin-bottom: 5px;">Active Regional Agents</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Maximum 10 Agents allowed. Currently active: {{ agents|length }}/10.</p>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Agent ID</th>
+                                <th>Assigned Province</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for agent in agents %}
+                            <tr>
+                                <td><strong>{{ agent.username }}</strong></td>
+                                <td>{{ agent.province }}</td>
+                                <td class="actions-cell">
+                                    <form action="/admin/agent/delete/{{ agent.id }}" method="POST" style="display:inline;" onsubmit="return confirm('Revoke membership for this Agent?');">
+                                        <button type="submit" class="action-btn delete-btn">Revoke Access</button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="3" style="text-align: center; color: var(--text-muted);">No regional agents currently active.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        function toggleSettings() {
+            const card = document.getElementById('settingsCard');
+            if (card.style.display === 'none') {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        }
+
+        function togglePasswordVisibility(inputId, buttonElement) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                buttonElement.textContent = '🙈'; // Hide icon
+            } else {
+                input.type = 'password';
+                buttonElement.textContent = '👁️'; // Show icon
+            }
+        }
+
+        function editMarket(province, town, marketName, price) {
+            document.getElementById('market_province').value = province;
+            document.getElementById('market_town').value = town;
+            document.getElementById('market_name').value = marketName;
+            document.getElementById('market_price').value = price;
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        function editInput(province, town, supplier, item, price) {
+            document.getElementById('input_province').value = province;
+            document.getElementById('input_town').value = town;
+            document.getElementById('input_supplier').value = supplier;
+            document.getElementById('input_item').value = item;
+            document.getElementById('input_price').value = price;
+            
+            const inputsSection = document.getElementById('input_province').getBoundingClientRect().top + window.scrollY - 100;
+            window.scrollTo({ top: inputsSection, behavior: 'smooth' });
+        }
+    </script>
+</body>
+</html>
