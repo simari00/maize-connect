@@ -278,10 +278,18 @@ def login():
         conn.close()
         
         if admin and check_password_hash(admin['password_hash'], password):
-            # SECURITY CHECK: Block pending agents from logging in
+            # --- NEW UPGRADE: AGENT STATUS NOTIFICATIONS ---
             if admin['status'] == 'pending':
-                return render_template('login.html', view='login', error="Account pending approval from Main Admin.")
+                return render_template('login.html', view='login', error="Status: Pending Approval. Please wait for the Main Admin to approve your account.")
                 
+            elif admin['status'] == 'revoked':
+                return render_template('login.html', view='login', error="Access Denied: Your agent privileges have been revoked by the Main Admin.")
+                
+            elif admin['status'] == 'rejected':
+                return render_template('login.html', view='login', error="Access Denied: Your agent registration application was rejected.")
+            # -----------------------------------------------
+            
+            # If status is 'approved' (or they are the master admin), log them in
             user = AdminUser(admin['id'], admin['username'], admin['role'], admin['province'])
             login_user(user)
             return redirect('/dashboard')
