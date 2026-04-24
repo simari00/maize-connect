@@ -296,6 +296,7 @@ def logout():
     logout_user()
     return redirect('/login')
 
+
 @app.route('/register_admin', methods=['GET', 'POST'])
 def register_admin():
     if request.method == 'POST':
@@ -314,6 +315,15 @@ def register_admin():
         province = request.form.get('province')
         question = request.form.get('security_question')
         answer = request.form.get('security_answer')
+        
+        # --- NEW UPGRADE: ONE AGENT PER PROVINCE CHECK ---
+        # Checks if anyone (pending or approved) is already assigned to this province
+        prov_check = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND province = ?", (province,)).fetchone()
+        
+        if prov_check['total'] > 0:
+            conn.close()
+            return render_template('login.html', view='register', error=f"Province Taken: An agent is already registered or pending for {province}.")
+        # -------------------------------------------------
         
         password_hash = generate_password_hash(password)
         answer_hash = generate_password_hash(answer.lower().strip()) 
