@@ -203,7 +203,7 @@ def fetch_national_weather():
     conn.close()
     print(f"Dual Weather Sync Complete for {current_year}.")
 
-# --- Asynchronous SMS Task ---
+# --- Asynchronous SMS Task (UPGRADED SMS STRUCTURE) ---
 def send_sms_async(phone_number, service_choice):
     """Fetches data from DB based on user's province and sends detailed SMS."""
     conn = get_db_connection()
@@ -214,31 +214,30 @@ def send_sms_async(phone_number, service_choice):
         return
 
     user_province = user['province']
-    message = f"MaizeConnect ({user_province}):\n"
+    message = f"MaizeConnect ({user_province})\n"
     
     if service_choice == '1':
         data = conn.execute('SELECT * FROM market_prices WHERE province = ?', (user_province,)).fetchall()
         if data:
-            message += "Markets:\n"
+            message += "--- MARKETS ---\n"
             for row in data:
-                message += f"- {row['market_name']} ({row['town']}): ${row['price_per_ton']}/Ton\n"
+                message += f"Market: {row['market_name']}\nLocation: {row['town']}\nPrice: ${row['price_per_ton']}/Ton\n\n"
         else:
             message += "No price data available for your region today."
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            # UPGRADE: Pull both the live forecast and the API-generated outlook directly from the DB
-            message += f"{data['forecast']}\n{data['outlook']}"
+            message += f"--- WEATHER ---\n{data['forecast']}\n\n{data['outlook']}"
         else:
             message += "Weather data currently syncing. Please wait 1 minute."
 
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ?', (user_province,)).fetchall()
         if data:
-            message += "Inputs:\n"
+            message += "--- FARMING INPUTS ---\n"
             for row in data:
-                message += f"- {row['supplier_name']} ({row['town']}): {row['item_name']} @ ${row['price']}\n"
+                message += f"Item: {row['item_name']}\nSupplier: {row['supplier_name']}\nLocation: {row['town']}\nPrice: ${row['price']}\n\n"
         else:
              message += "No input data available for your region today."
     
@@ -247,7 +246,7 @@ def send_sms_async(phone_number, service_choice):
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = sms.send(message, [phone_number])
+            response = sms.send(message.strip(), [phone_number])
             print(f"SMS queued to {phone_number} on attempt {attempt + 1}: {response}")
             break 
         except Exception as e:
@@ -676,7 +675,8 @@ def ussd_callback():
                                 conn.close()
                                 
                                 response = f"END Listing successful. Buyers in {user['province']} will be notified."
-                                demo_msg = f"MaizeConnect: Your listing for {quantity}T at ${price}/T is live in {user['province']}."
+                                # UPGRADED SMS STRUCTURE
+                                demo_msg = f"MaizeConnect: Listing Active\n--- DETAILS ---\nQty: {quantity}T\nPrice: ${price}/Ton\nLocation: {user['province']}"
                                 try:
                                     sms.send(demo_msg, [phone_number])
                                 except Exception:
@@ -696,14 +696,15 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
+                                    # UPGRADED SMS STRUCTURE
                                     if available_maize:
-                                        msg = f"MaizeConnect ({province}) For Sale:\n"
+                                        msg = f"MaizeConnect ({province})\n--- MAIZE FOR SALE ---\n"
                                         for row in available_maize:
-                                            msg += f"- {row['quantity_tons']}T @ ${row['price_per_ton']}/T in {row['town']} (Call: {row['phone_number']})\n"
+                                            msg += f"Details: {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLocation: {row['town']}\nContact: {row['phone_number']}\n\n"
                                     else:
                                         msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     try:
-                                        sms.send(msg, [buyer_phone])
+                                        sms.send(msg.strip(), [buyer_phone])
                                     except Exception:
                                         pass
 
