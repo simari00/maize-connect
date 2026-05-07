@@ -118,7 +118,7 @@ def create_user(phone_number, full_name, pin, province, town, sec_question, sec_
     conn.commit()
     conn.close()
 
-# --- Automated Weather Sync Task (UPGRADED DYNAMIC YEAR) ---
+# --- Automated Weather Sync Task ---
 def fetch_national_weather():
     """Fetches both 3-day live forecast AND statistical December outlook dynamically for the current year."""
     print(f"[{datetime.now()}] Starting Dual API Weather Sync...")
@@ -129,21 +129,14 @@ def fetch_national_weather():
         return
 
     conn = get_db_connection()
-    
-    # DYNAMIC TIME: Automatically get the current year (e.g., 2026, 2027, 2030)
     current_year = datetime.now().year
-    short_year = str(current_year)[-2:] # Gets '26' or '27' for the SMS text
+    short_year = str(current_year)[-2:] 
     
     for key, (city_name, prov_name) in LOCATIONS.items():
-        # 1. Fetch Short-Term (Live API)
         short_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
-        
-        # 2. Fetch Long-Term (Dynamic December API)
-        # It automatically injects the current year into the URL!
         long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{current_year}-12-01/{current_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
         
         try:
-            # --- Process Live 3-Day Forecast ---
             short_resp = requests.get(short_url, timeout=10)
             if short_resp.status_code == 200:
                 short_data = short_resp.json()
@@ -160,7 +153,6 @@ def fetch_national_weather():
             else:
                 forecast_text = "3-Day: API Error. Using Fallback."
 
-            # --- Process Dynamic December Outlook ---
             long_resp = requests.get(long_url, timeout=15)
             if long_resp.status_code == 200:
                 long_data = long_resp.json()
@@ -175,7 +167,6 @@ def fetch_national_weather():
                 else:
                     advice = "Low rainfall expected. Drought-resistant crops advised."
                     
-                # Dynamically changes the SMS text to say "Dec '26" or "Dec '27"
                 outlook_text = f"Dec '{short_year} API Est: ~{round(total_rain)}mm rain, {round(avg_temp)}C Avg. {advice}"
             else:
                 outlook_text = f"Dec '{short_year} API Est: Normal seasonal rains expected (Fallback)."
@@ -203,7 +194,7 @@ def fetch_national_weather():
     conn.close()
     print(f"Dual Weather Sync Complete for {current_year}.")
 
-# --- Asynchronous SMS Task (UPGRADED SMS STRUCTURE) ---
+# --- Asynchronous SMS Task (UPGRADED STRUCTURAL FORMATTING) ---
 def send_sms_async(phone_number, service_choice):
     """Fetches data from DB based on user's province and sends detailed SMS."""
     conn = get_db_connection()
@@ -214,32 +205,33 @@ def send_sms_async(phone_number, service_choice):
         return
 
     user_province = user['province']
-    message = f"MaizeConnect ({user_province})\n"
     
     if service_choice == '1':
-        data = conn.execute('SELECT * FROM market_prices WHERE province = ?', (user_province,)).fetchall()
+        # Added LIMIT 3 so SMS doesn't break character limits
+        data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message += "--- MARKETS ---\n"
-            for row in data:
-                message += f"Market: {row['market_name']}\nLocation: {row['town']}\nPrice: ${row['price_per_ton']}/Ton\n\n"
+            # Using \r\n explicitly for telecom gateway compatibility
+            message = f"MaizeConnect: MARKETS ({user_province})\r\n"
+            for i, row in enumerate(data, 1):
+                message += f"{i}. {row['market_name']}\r\nLoc: {row['town']}\r\nPrice: ${row['price_per_ton']}/Ton\r\n\r\n"
         else:
-            message += "No price data available for your region today."
+            message = f"MaizeConnect: No market data for {user_province} today."
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message += f"--- WEATHER ---\n{data['forecast']}\n\n{data['outlook']}"
+            message = f"MaizeConnect: WEATHER ({user_province})\r\n{data['forecast']}\r\n\r\n{data['outlook']}"
         else:
-            message += "Weather data currently syncing. Please wait 1 minute."
+            message = "MaizeConnect: Weather data currently syncing. Please wait 1 minute."
 
     elif service_choice == '3':
-        data = conn.execute('SELECT * FROM inputs WHERE province = ?', (user_province,)).fetchall()
+        data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message += "--- FARMING INPUTS ---\n"
-            for row in data:
-                message += f"Item: {row['item_name']}\nSupplier: {row['supplier_name']}\nLocation: {row['town']}\nPrice: ${row['price']}\n\n"
+            message = f"MaizeConnect: INPUTS ({user_province})\r\n"
+            for i, row in enumerate(data, 1):
+                message += f"{i}. {row['item_name']}\r\nSupplier: {row['supplier_name']} ({row['town']})\r\nPrice: ${row['price']}\r\n\r\n"
         else:
-             message += "No input data available for your region today."
+             message = f"MaizeConnect: No input data for {user_province} today."
     
     conn.close()
     
@@ -260,9 +252,6 @@ def send_sms_async(phone_number, service_choice):
 # SECURE AUTHENTICATION ROUTES
 # ==========================================
 
-# ==========================================
-# ROOT REDIRECT
-# ==========================================
 @app.route('/')
 def home():
     return redirect('/login')
@@ -273,28 +262,21 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
-        # --- NEW WEB SECURITY UPGRADE: LOGIN PIN VALIDATION ---
         if not (password.isdigit() and len(password) == 4):
             return render_template('login.html', view='login', error="Security Error: Passcode must be exactly 4 numeric digits.")
-        # ------------------------------------------------------
         
         conn = get_db_connection()
         admin = conn.execute('SELECT * FROM admins WHERE username = ?', (username,)).fetchone()
         conn.close()
         
         if admin and check_password_hash(admin['password_hash'], password):
-            # --- NEW UPGRADE: AGENT STATUS NOTIFICATIONS ---
             if admin['status'] == 'pending':
                 return render_template('login.html', view='login', error="Status: Pending Approval. Please wait for the Main Admin to approve your account.")
-                
             elif admin['status'] == 'revoked':
                 return render_template('login.html', view='login', error="Access Denied: Your agent privileges have been revoked by the Main Admin.")
-                
             elif admin['status'] == 'rejected':
                 return render_template('login.html', view='login', error="Access Denied: Your agent registration application was rejected.")
-            # -----------------------------------------------
             
-            # If status is 'approved' (or they are the master admin), log them in
             user = AdminUser(admin['id'], admin['username'], admin['role'], admin['province'])
             login_user(user)
             return redirect('/dashboard')
@@ -314,7 +296,6 @@ def register_admin():
     if request.method == 'POST':
         conn = get_db_connection()
         
-        # FIX 1: Safely count agents using a labeled column 'total' for both databases
         count_row = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND status = 'approved'").fetchone()
         agent_count = count_row['total']
         
@@ -328,26 +309,20 @@ def register_admin():
         question = request.form.get('security_question')
         answer = request.form.get('security_answer')
         
-        # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
         if not (password.isdigit() and len(password) == 4):
             conn.close()
             return render_template('login.html', view='register', error="Security Error: Passcode must be exactly 4 numeric digits (no letters).")
-        # -------------------------------------------------------------
         
-        # --- NEW UPGRADE: ONE AGENT PER PROVINCE CHECK ---
-        # Checks if anyone (pending or approved) is already assigned to this province
         prov_check = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND province = ?", (province,)).fetchone()
         
         if prov_check['total'] > 0:
             conn.close()
             return render_template('login.html', view='register', error=f"Province Taken: An agent is already registered or pending for {province}.")
-        # -------------------------------------------------
         
         password_hash = generate_password_hash(password)
         answer_hash = generate_password_hash(answer) 
         
         try:
-            # NEW AGENTS ARE INSERTED AS 'pending'
             conn.execute('''
                 INSERT INTO admins (username, password_hash, province, security_question, security_answer_hash, role, status) 
                 VALUES (?, ?, ?, ?, ?, 'agent', 'pending')
@@ -356,7 +331,6 @@ def register_admin():
             msg = "Request sent! Please wait for the Main Admin to approve your account."
             return redirect(f'/login?msg={msg}')
             
-        # FIX 2: Catch duplicate ID errors from BOTH SQLite and PostgreSQL
         except (sqlite3.IntegrityError, psycopg2.IntegrityError):
             return render_template('login.html', view='register', error="Administrator ID already exists.")
         finally:
@@ -383,10 +357,8 @@ def forgot_password():
             answer = request.form.get('security_answer')
             new_password = request.form.get('new_password')
             
-            # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
             if not (new_password.isdigit() and len(new_password) == 4):
                 return render_template('login.html', view='forgot', step=2, error="Security Error: New passcode must be exactly 4 numeric digits (no letters).", username=username)
-            # -------------------------------------------------------------
             
             conn = get_db_connection()
             admin = conn.execute('SELECT security_answer_hash FROM admins WHERE username = ?', (username,)).fetchone()
@@ -417,7 +389,6 @@ def dashboard():
     agents = []
     pending_agents = []
     if current_user.role == 'main_admin':
-        # Split agents into active and pending queues
         agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'approved'").fetchall()
         pending_agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'pending'").fetchall()
         
@@ -432,14 +403,11 @@ def update_settings():
     new_question = request.form.get('security_question')
     new_answer = request.form.get('security_answer')
     
-    # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
     if new_password and not (new_password.isdigit() and len(new_password) == 4):
         return redirect('/dashboard?msg=Error:+New+passcode+must+be+exactly+4+numeric+digits.')
-    # -------------------------------------------------------------
     
     conn = get_db_connection()
     try:
-        # 1. Update Username, Question, and hashed Answer
         ans_hash = generate_password_hash(new_answer)
         conn.execute('''
             UPDATE admins 
@@ -447,7 +415,6 @@ def update_settings():
             WHERE id = ?
         ''', (new_username, new_question, ans_hash, current_user.id))
         
-        # 2. Only update the passcode if they actually typed a new one
         if new_password:
             pwd_hash = generate_password_hash(new_password)
             conn.execute('UPDATE admins SET password_hash = ? WHERE id = ?', (pwd_hash, current_user.id))
@@ -456,7 +423,6 @@ def update_settings():
         return redirect('/dashboard?msg=Account+credentials+updated+successfully.')
         
     except sqlite3.IntegrityError:
-        # Triggers if they try to change their ID to one that another agent is already using
         return redirect('/dashboard?msg=Error:+That+Administrator+ID+is+already+taken.')
     finally:
         conn.close()
@@ -535,7 +501,6 @@ def delete_input(input_id):
     conn.close()
     return redirect('/dashboard?msg=Specific+input+removed+successfully.')
 
-# --- NEW APPROVAL ROUTE ---
 @app.route('/admin/agent/approve/<int:agent_id>', methods=['POST'])
 @login_required
 def approve_agent(agent_id):
@@ -567,7 +532,7 @@ def admin_sync_weather():
     return redirect('/dashboard?msg=National+Weather+Sync+Complete')
 
 # ==========================================
-# CORE USSD ROUTING (UPGRADED AUTHENTICATION)
+# CORE USSD ROUTING
 # ==========================================
 @app.route('/ussd', methods=['POST'])
 def ussd_callback():
@@ -581,7 +546,6 @@ def ussd_callback():
     user = get_user(phone_number)
     response = ""
 
-    # Security Questions Dictionary
     SEC_QUESTIONS = {
         '1': 'What city were you born in?',
         '2': "What is your mother's maiden name?",
@@ -601,10 +565,8 @@ def ussd_callback():
         elif len(text_array) >= 3 and text_array[0] == '1':
             pin = text_array[2]
             
-            # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
             if not (pin.isdigit() and len(pin) == 4):
                 response = "END Registration failed. Your PIN must be exactly 4 numbers. Please try again."
-            # -----------------------------------------------------------
             elif len(text_array) == 3:
                 response = "CON Select Province:\n1.Harare \n2.Bulawayo \n3.Manicaland \n4.Midlands \n5.Masvingo \n6.Mash West \n7.Mash Central \n8.Mash East \n9.Mat South \n10.Mat North"
             elif len(text_array) == 4:
@@ -643,10 +605,8 @@ def ussd_callback():
             elif len(text_array) >= 2:
                 entered_pin = text_array[1]
                 
-                # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
                 if not (entered_pin.isdigit() and len(entered_pin) == 4):
                     response = "END Error. PIN must be exactly 4 numeric digits."
-                # ------------------------------------------------------
                 elif entered_pin == user['pin']:
                     if len(text_array) == 2:
                         response = "CON Select Service:\n1. Maize Prices\n2. Weather\n3. Inputs\n4. Sell Maize\n5. Buy Maize"
@@ -675,10 +635,10 @@ def ussd_callback():
                                 conn.close()
                                 
                                 response = f"END Listing successful. Buyers in {user['province']} will be notified."
-                                # UPGRADED SMS STRUCTURE
-                                demo_msg = f"MaizeConnect: Listing Active\n--- DETAILS ---\nQty: {quantity}T\nPrice: ${price}/Ton\nLocation: {user['province']}"
+                                # UPGRADED LISTING SMS FORMATTING
+                                demo_msg = f"MaizeConnect: LISTING ACTIVE\r\nQty: {quantity}T\r\nPrice: ${price}/Ton\r\nLocation: {user['province']}"
                                 try:
-                                    sms.send(demo_msg, [phone_number])
+                                    sms.send(demo_msg.strip(), [phone_number])
                                 except Exception:
                                     pass
                                     
@@ -696,11 +656,11 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
-                                    # UPGRADED SMS STRUCTURE
+                                    # UPGRADED BUYER SMS FORMATTING
                                     if available_maize:
-                                        msg = f"MaizeConnect ({province})\n--- MAIZE FOR SALE ---\n"
-                                        for row in available_maize:
-                                            msg += f"Details: {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLocation: {row['town']}\nContact: {row['phone_number']}\n\n"
+                                        msg = f"MaizeConnect: FOR SALE ({province})\r\n"
+                                        for i, row in enumerate(available_maize, 1):
+                                            msg += f"{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\r\nLoc: {row['town']}\r\nCall: {row['phone_number']}\r\n\r\n"
                                     else:
                                         msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     try:
@@ -729,10 +689,8 @@ def ussd_callback():
                 entered_ans = text_array[1]
                 new_pin = text_array[2]
                 
-                # --- NEW SECURITY UPGRADE: PIN VALIDATION (FORGOT PIN) ---
                 if not (new_pin.isdigit() and len(new_pin) == 4):
                     response = "END PIN reset failed. Your NEW PIN must be exactly 4 numbers. Please try again."
-                # ---------------------------------------------------------
                 elif entered_ans == user['security_answer']:
                     conn = get_db_connection()
                     conn.execute('UPDATE users SET pin = ? WHERE phone_number = ?', (new_pin, phone_number))
@@ -749,10 +707,8 @@ def ussd_callback():
             elif len(text_array) >= 2:
                 entered_pin = text_array[1]
                 
-                # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
                 if not (entered_pin.isdigit() and len(entered_pin) == 4):
                     response = "END Error. PIN must be exactly 4 numeric digits."
-                # ------------------------------------------------------
                 elif entered_pin == user['pin']:
                     if len(text_array) == 2:
                         response = "CON What do you want to change?\n1. Change Name\n2. Change Region"
@@ -795,21 +751,14 @@ if __name__ == '__main__':
     # ==========================================
     print("Initializing Background Scheduler...")
     
-    # daemon=True ensures the background threads don't block the server from stopping
     scheduler = BackgroundScheduler(daemon=True)
     
-    # 1. Schedule daily sync at exactly 6:00 AM every morning (Cron Job)
     scheduler.add_job(fetch_national_weather, 'cron', hour=6, minute=0)
-    
-    # 2. Force an immediate sync right now on server startup
     scheduler.add_job(fetch_national_weather, 'date', run_date=datetime.now())
-    
     scheduler.start()
 
-    # Ensure the scheduler shuts down safely when you stop the Flask server (Ctrl+C)
     atexit.register(lambda: scheduler.shutdown())
     
     print("Auto-Sync Engine Active. Weather will sync now, and then daily at 6:00 AM.")
 
-    # Start the Flask server (reloader disabled to prevent duplicate scheduler jobs)
     app.run(port=8000, debug=True, use_reloader=False)
