@@ -267,6 +267,7 @@ def send_sms_async(phone_number, service_choice):
 @app.route('/')
 def home():
     return redirect('/login')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -303,7 +304,6 @@ def login():
 def logout():
     logout_user()
     return redirect('/login')
-
 
 @app.route('/register_admin', methods=['GET', 'POST'])
 def register_admin():
@@ -591,7 +591,11 @@ def ussd_callback():
             q_choice = text_array[4]
             ans = text_array[5]
             
-            if loc_choice in LOCATIONS and q_choice in SEC_QUESTIONS:
+            # --- NEW SECURITY UPGRADE: PIN VALIDATION (REGISTRATION) ---
+            if not (pin.isdigit() and len(pin) == 4):
+                response = "END Registration failed. Your PIN must be exactly 4 numbers. Please try again."
+            # -----------------------------------------------------------
+            elif loc_choice in LOCATIONS and q_choice in SEC_QUESTIONS:
                 town, province = LOCATIONS[loc_choice]
                 sec_q = SEC_QUESTIONS[q_choice]
                 create_user(phone_number, full_name, pin, province, town, sec_q, ans)
@@ -695,7 +699,11 @@ def ussd_callback():
                 entered_ans = text_array[1].lower().strip()
                 new_pin = text_array[2]
                 
-                if entered_ans == user['security_answer']:
+                # --- NEW SECURITY UPGRADE: PIN VALIDATION (FORGOT PIN) ---
+                if not (new_pin.isdigit() and len(new_pin) == 4):
+                    response = "END PIN reset failed. Your NEW PIN must be exactly 4 numbers. Please try again."
+                # ---------------------------------------------------------
+                elif entered_ans == user['security_answer']:
                     conn = get_db_connection()
                     conn.execute('UPDATE users SET pin = ? WHERE phone_number = ?', (new_pin, phone_number))
                     conn.commit()
