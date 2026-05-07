@@ -210,26 +210,25 @@ def send_sms_async(phone_number, service_choice):
         # Added LIMIT 3 so SMS doesn't break character limits
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            # Using \r\n explicitly for telecom gateway compatibility
-            message = f"MaizeConnect: MARKETS ({user_province})\r\n"
+            message = f"MaizeConnect: MARKETS ({user_province})"
             for i, row in enumerate(data, 1):
-                message += f"{i}. {row['market_name']}\r\nLoc: {row['town']}\r\nPrice: ${row['price_per_ton']}/Ton\r\n\r\n"
+                message += f"\n\n{i}. {row['market_name']}\nLoc: {row['town']}\nPrice: ${row['price_per_ton']}/Ton"
         else:
             message = f"MaizeConnect: No market data for {user_province} today."
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message = f"MaizeConnect: WEATHER ({user_province})\r\n{data['forecast']}\r\n\r\n{data['outlook']}"
+            message = f"MaizeConnect: WEATHER ({user_province})\n\n{data['forecast']}\n\n{data['outlook']}"
         else:
             message = "MaizeConnect: Weather data currently syncing. Please wait 1 minute."
 
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: INPUTS ({user_province})\r\n"
+            message = f"MaizeConnect: INPUTS ({user_province})"
             for i, row in enumerate(data, 1):
-                message += f"{i}. {row['item_name']}\r\nSupplier: {row['supplier_name']} ({row['town']})\r\nPrice: ${row['price']}\r\n\r\n"
+                message += f"\n\n{i}. {row['item_name']}\nSupplier: {row['supplier_name']} ({row['town']})\nPrice: ${row['price']}"
         else:
              message = f"MaizeConnect: No input data for {user_province} today."
     
@@ -635,8 +634,7 @@ def ussd_callback():
                                 conn.close()
                                 
                                 response = f"END Listing successful. Buyers in {user['province']} will be notified."
-                                # UPGRADED LISTING SMS FORMATTING
-                                demo_msg = f"MaizeConnect: LISTING ACTIVE\r\nQty: {quantity}T\r\nPrice: ${price}/Ton\r\nLocation: {user['province']}"
+                                demo_msg = f"MaizeConnect: LISTING ACTIVE\n\nQty: {quantity}T\nPrice: ${price}/Ton\nLocation: {user['province']}"
                                 try:
                                     sms.send(demo_msg.strip(), [phone_number])
                                 except Exception:
@@ -656,11 +654,10 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
-                                    # UPGRADED BUYER SMS FORMATTING
                                     if available_maize:
-                                        msg = f"MaizeConnect: FOR SALE ({province})\r\n"
+                                        msg = f"MaizeConnect: FOR SALE ({province})"
                                         for i, row in enumerate(available_maize, 1):
-                                            msg += f"{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\r\nLoc: {row['town']}\r\nCall: {row['phone_number']}\r\n\r\n"
+                                            msg += f"\n\n{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLoc: {row['town']}\nCall: {row['phone_number']}"
                                     else:
                                         msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     try:
