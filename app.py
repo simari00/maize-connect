@@ -387,12 +387,18 @@ def dashboard():
     
     agents = []
     pending_agents = []
+    registered_farmers = [] # --- NEW UPGRADE: Variable to hold the farmers ---
+    
     if current_user.role == 'main_admin':
         agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'approved'").fetchall()
         pending_agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'pending'").fetchall()
+        # --- NEW UPGRADE: Fetch farmers for Main Boss Only ---
+        registered_farmers = conn.execute("SELECT phone_number, full_name, province, town FROM users").fetchall()
         
     conn.close()
-    return render_template('dashboard.html', message=msg, markets=markets, inputs=inputs, agents=agents, pending_agents=pending_agents)
+    
+    # --- NEW UPGRADE: Pass 'registered_farmers' to the HTML template ---
+    return render_template('dashboard.html', message=msg, markets=markets, inputs=inputs, agents=agents, pending_agents=pending_agents, registered_farmers=registered_farmers)
 
 @app.route('/admin/settings', methods=['POST'])
 @login_required

@@ -460,7 +460,7 @@
                 </div>
             </div>
 
-            <div>
+            <div style="margin-bottom: 30px;">
                 <h3 style="color: var(--danger); margin-bottom: 5px;">Active Regional Agents</h3>
                 <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Maximum 10 Agents allowed. Currently active: {{ agents|length }}/10.</p>
                 <div class="table-responsive">
@@ -490,7 +490,36 @@
                     </table>
                 </div>
             </div>
-        </div>
+            
+            <div>
+                <h3 style="color: #27ae60; margin-bottom: 5px;">Registered USSD Farmers Database</h3>
+                <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 15px;">Total active farmers registered via *384*30858#: {{ registered_farmers|length }}</p>
+                <div class="table-responsive">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Phone Number</th>
+                                <th>Full Name</th>
+                                <th>Province</th>
+                                <th>Town</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for farmer in registered_farmers %}
+                            <tr>
+                                <td><strong>{{ farmer.phone_number }}</strong></td>
+                                <td>{{ farmer.full_name }}</td>
+                                <td>{{ farmer.province }}</td>
+                                <td>{{ farmer.town }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="4" style="text-align: center; color: var(--text-muted);">No farmers have registered via USSD yet.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+            </div>
         {% endif %}
 
     </div>
