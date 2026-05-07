@@ -274,6 +274,11 @@ def login():
         username = request.form.get('username')
         password = request.form.get('password')
         
+        # --- NEW WEB SECURITY UPGRADE: LOGIN PIN VALIDATION ---
+        if not (password.isdigit() and len(password) == 4):
+            return render_template('login.html', view='login', error="Security Error: Passcode must be exactly 4 numeric digits.")
+        # ------------------------------------------------------
+        
         conn = get_db_connection()
         admin = conn.execute('SELECT * FROM admins WHERE username = ?', (username,)).fetchone()
         conn.close()
@@ -594,30 +599,34 @@ def ussd_callback():
             response = "CON Enter your full name:"
         elif len(text_array) == 2 and text_array[0] == '1':
             response = "CON Create a 4-digit PIN:"
-        elif len(text_array) == 3 and text_array[0] == '1':
-            response = "CON Select Province:\n1.Harare \n2.Bulawayo \n3.Manicaland \n4.Midlands \n5.Masvingo \n6.Mash West \n7.Mash Central \n8.Mash East \n9.Mat South \n10.Mat North"
-        elif len(text_array) == 4 and text_array[0] == '1':
-            response = "CON Select Security Question (For PIN Recovery):\n1. City of birth?\n2. Mother's maiden name?\n3. First school?"
-        elif len(text_array) == 5 and text_array[0] == '1':
-            response = "CON Enter your answer:"
-        elif len(text_array) == 6 and text_array[0] == '1':
-            full_name = text_array[1]
+        elif len(text_array) >= 3 and text_array[0] == '1':
             pin = text_array[2]
-            loc_choice = text_array[3]
-            q_choice = text_array[4]
-            ans = text_array[5]
             
-            # --- NEW SECURITY UPGRADE: PIN VALIDATION (REGISTRATION) ---
+            # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
             if not (pin.isdigit() and len(pin) == 4):
                 response = "END Registration failed. Your PIN must be exactly 4 numbers. Please try again."
             # -----------------------------------------------------------
-            elif loc_choice in LOCATIONS and q_choice in SEC_QUESTIONS:
-                town, province = LOCATIONS[loc_choice]
-                sec_q = SEC_QUESTIONS[q_choice]
-                create_user(phone_number, full_name, pin, province, town, sec_q, ans)
-                response = f"END Registration successful for {province}. Dial *384*30858# to login."
+            elif len(text_array) == 3:
+                response = "CON Select Province:\n1.Harare \n2.Bulawayo \n3.Manicaland \n4.Midlands \n5.Masvingo \n6.Mash West \n7.Mash Central \n8.Mash East \n9.Mat South \n10.Mat North"
+            elif len(text_array) == 4:
+                response = "CON Select Security Question (For PIN Recovery):\n1. City of birth?\n2. Mother's maiden name?\n3. First school?"
+            elif len(text_array) == 5:
+                response = "CON Enter your answer:"
+            elif len(text_array) == 6:
+                full_name = text_array[1]
+                loc_choice = text_array[3]
+                q_choice = text_array[4]
+                ans = text_array[5]
+                
+                if loc_choice in LOCATIONS and q_choice in SEC_QUESTIONS:
+                    town, province = LOCATIONS[loc_choice]
+                    sec_q = SEC_QUESTIONS[q_choice]
+                    create_user(phone_number, full_name, pin, province, town, sec_q, ans)
+                    response = f"END Registration successful for {province}. Dial *384*30858# to login."
+                else:
+                    response = "END Invalid selection. Try again."
             else:
-                response = "END Invalid selection. Try again."
+                response = "END Invalid input. Please try again."
         else:
             response = "END Invalid input. Please try again."
 
@@ -635,7 +644,11 @@ def ussd_callback():
             elif len(text_array) >= 2:
                 entered_pin = text_array[1]
                 
-                if entered_pin == user['pin']:
+                # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
+                if not (entered_pin.isdigit() and len(entered_pin) == 4):
+                    response = "END Error. PIN must be exactly 4 numeric digits."
+                # ------------------------------------------------------
+                elif entered_pin == user['pin']:
                     if len(text_array) == 2:
                         response = "CON Select Service:\n1. Maize Prices\n2. Weather\n3. Inputs\n4. Sell Maize\n5. Buy Maize"
                     else:
@@ -735,7 +748,11 @@ def ussd_callback():
             elif len(text_array) >= 2:
                 entered_pin = text_array[1]
                 
-                if entered_pin == user['pin']:
+                # --- NEW SECURITY UPGRADE: IMMEDIATE PIN VALIDATION ---
+                if not (entered_pin.isdigit() and len(entered_pin) == 4):
+                    response = "END Error. PIN must be exactly 4 numeric digits."
+                # ------------------------------------------------------
+                elif entered_pin == user['pin']:
                     if len(text_array) == 2:
                         response = "CON What do you want to change?\n1. Change Name\n2. Change Region"
                     elif len(text_array) == 3:
