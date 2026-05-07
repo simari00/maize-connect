@@ -114,7 +114,7 @@ def create_user(phone_number, full_name, pin, province, town, sec_question, sec_
     conn.execute('''
         INSERT INTO users (phone_number, full_name, pin, province, town, security_question, security_answer) 
         VALUES (?, ?, ?, ?, ?, ?, ?)
-    ''', (phone_number, full_name, pin, province, town, sec_question, sec_answer.lower().strip()))
+    ''', (phone_number, full_name, pin, province, town, sec_question, sec_answer))
     conn.commit()
     conn.close()
 
@@ -324,6 +324,12 @@ def register_admin():
         question = request.form.get('security_question')
         answer = request.form.get('security_answer')
         
+        # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
+        if not (password.isdigit() and len(password) == 4):
+            conn.close()
+            return render_template('login.html', view='register', error="Security Error: Passcode must be exactly 4 numeric digits (no letters).")
+        # -------------------------------------------------------------
+        
         # --- NEW UPGRADE: ONE AGENT PER PROVINCE CHECK ---
         # Checks if anyone (pending or approved) is already assigned to this province
         prov_check = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND province = ?", (province,)).fetchone()
@@ -334,7 +340,7 @@ def register_admin():
         # -------------------------------------------------
         
         password_hash = generate_password_hash(password)
-        answer_hash = generate_password_hash(answer.lower().strip()) 
+        answer_hash = generate_password_hash(answer) 
         
         try:
             # NEW AGENTS ARE INSERTED AS 'pending'
@@ -370,8 +376,13 @@ def forgot_password():
                 
         elif 'reset_password' in request.form:
             username = request.form.get('username')
-            answer = request.form.get('security_answer').lower().strip()
+            answer = request.form.get('security_answer')
             new_password = request.form.get('new_password')
+            
+            # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
+            if not (new_password.isdigit() and len(new_password) == 4):
+                return render_template('login.html', view='forgot', step=2, error="Security Error: New passcode must be exactly 4 numeric digits (no letters).", username=username)
+            # -------------------------------------------------------------
             
             conn = get_db_connection()
             admin = conn.execute('SELECT security_answer_hash FROM admins WHERE username = ?', (username,)).fetchone()
@@ -417,10 +428,15 @@ def update_settings():
     new_question = request.form.get('security_question')
     new_answer = request.form.get('security_answer')
     
+    # --- NEW WEB SECURITY UPGRADE: 4-DIGIT PASSCODE VALIDATION ---
+    if new_password and not (new_password.isdigit() and len(new_password) == 4):
+        return redirect('/dashboard?msg=Error:+New+passcode+must+be+exactly+4+numeric+digits.')
+    # -------------------------------------------------------------
+    
     conn = get_db_connection()
     try:
         # 1. Update Username, Question, and hashed Answer
-        ans_hash = generate_password_hash(new_answer.lower().strip())
+        ans_hash = generate_password_hash(new_answer)
         conn.execute('''
             UPDATE admins 
             SET username = ?, security_question = ?, security_answer_hash = ?
@@ -690,13 +706,13 @@ def ussd_callback():
             if len(text_array) == 1:
                 response = f"CON Security Question:\n{user['security_question']}\n\nEnter your answer:"
             elif len(text_array) == 2:
-                entered_ans = text_array[1].lower().strip()
+                entered_ans = text_array[1]
                 if entered_ans == user['security_answer']:
                     response = "CON Answer Correct. Enter your NEW 4-digit PIN:"
                 else:
                     response = "END Incorrect answer. Access denied."
             elif len(text_array) == 3:
-                entered_ans = text_array[1].lower().strip()
+                entered_ans = text_array[1]
                 new_pin = text_array[2]
                 
                 # --- NEW SECURITY UPGRADE: PIN VALIDATION (FORGOT PIN) ---
