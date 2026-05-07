@@ -210,9 +210,9 @@ def send_sms_async(phone_number, service_choice):
         # Added LIMIT 3 so SMS doesn't break character limits
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: MARKETS ({user_province})"
+            message = f"MaizeConnect: MARKETS ({user_province})\n\n"
             for i, row in enumerate(data, 1):
-                message += f"\n\n{i}. {row['market_name']}\nLoc: {row['town']}\nPrice: ${row['price_per_ton']}/Ton"
+                message += f"{i}. {row['market_name']}\nLoc: {row['town']}\nPrice: ${row['price_per_ton']}/Ton\n\n"
         else:
             message = f"MaizeConnect: No market data for {user_province} today."
 
@@ -226,9 +226,9 @@ def send_sms_async(phone_number, service_choice):
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: INPUTS ({user_province})"
+            message = f"MaizeConnect: INPUTS ({user_province})\n\n"
             for i, row in enumerate(data, 1):
-                message += f"\n\n{i}. {row['item_name']}\nSupplier: {row['supplier_name']} ({row['town']})\nPrice: ${row['price']}"
+                message += f"{i}. {row['item_name']}\nSupplier: {row['supplier_name']} ({row['town']})\nPrice: ${row['price']}\n\n"
         else:
              message = f"MaizeConnect: No input data for {user_province} today."
     
@@ -387,17 +387,15 @@ def dashboard():
     
     agents = []
     pending_agents = []
-    registered_farmers = [] # --- NEW UPGRADE: Variable to hold the farmers ---
+    registered_farmers = [] 
     
     if current_user.role == 'main_admin':
         agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'approved'").fetchall()
         pending_agents = conn.execute("SELECT * FROM admins WHERE role = 'agent' AND status = 'pending'").fetchall()
-        # --- NEW UPGRADE: Fetch farmers for Main Boss Only ---
         registered_farmers = conn.execute("SELECT phone_number, full_name, province, town FROM users").fetchall()
         
     conn.close()
     
-    # --- NEW UPGRADE: Pass 'registered_farmers' to the HTML template ---
     return render_template('dashboard.html', message=msg, markets=markets, inputs=inputs, agents=agents, pending_agents=pending_agents, registered_farmers=registered_farmers)
 
 @app.route('/admin/settings', methods=['POST'])
@@ -661,9 +659,9 @@ def ussd_callback():
                                     conn.close()
                                     
                                     if available_maize:
-                                        msg = f"MaizeConnect: FOR SALE ({province})"
+                                        msg = f"MaizeConnect: FOR SALE ({province})\n\n"
                                         for i, row in enumerate(available_maize, 1):
-                                            msg += f"\n\n{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLoc: {row['town']}\nCall: {row['phone_number']}"
+                                            msg += f"{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLoc: {row['town']}\nCall: {row['phone_number']}\n\n"
                                     else:
                                         msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     try:
@@ -678,7 +676,7 @@ def ussd_callback():
                 else:
                     response = "END Invalid PIN. Please try again."
 
-        # --- BRANCH 2: FORGOT PIN ---
+        # --- BRANCH 2: FOR forgot PIN ---
         elif text_array[0] == '2':
             if len(text_array) == 1:
                 response = f"CON Security Question:\n{user['security_question']}\n\nEnter your answer:"
