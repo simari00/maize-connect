@@ -194,7 +194,7 @@ def fetch_national_weather():
     conn.close()
     print(f"Dual Weather Sync Complete for {current_year}.")
 
-# --- Asynchronous SMS Task (UPGRADED STRUCTURAL FORMATTING) ---
+# --- Asynchronous SMS Task (UPGRADED BULLETPROOF FORMATTING) ---
 def send_sms_async(phone_number, service_choice):
     """Fetches data from DB based on user's province and sends detailed SMS."""
     conn = get_db_connection()
@@ -205,47 +205,60 @@ def send_sms_async(phone_number, service_choice):
         return
 
     user_province = user['province']
+    message_lines = []
     
     if service_choice == '1':
-        # Added LIMIT 3 so SMS doesn't break character limits
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: {user_province} Markets\n"
+            message_lines.append(f"MaizeConnect: {user_province} Markets")
             for i, row in enumerate(data, 1):
                 try:
                     price_str = f"${float(row['price_per_ton']):,.2f}"
                 except:
                     price_str = f"${row['price_per_ton']}"
-                message += f"{i}. {row['market_name']}\n- Loc: {row['town']}\n- Price: {price_str}/Ton\n"
+                message_lines.append(f"{i}. {row['market_name']}")
+                message_lines.append("")
+                message_lines.append(f"Location: {row['town']}")
+                message_lines.append(f"Price: {price_str}/Ton")
         else:
-            message = f"MaizeConnect: No market data for {user_province} today."
+            message_lines.append(f"MaizeConnect: No market data for {user_province} today.")
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message = f"MaizeConnect: {user_province} Weather\n- {data['forecast']}\n- {data['outlook']}"
+            message_lines.append(f"MaizeConnect: {user_province} Weather")
+            message_lines.append("")
+            message_lines.append(f"Forecast: {data['forecast']}")
+            message_lines.append("")
+            message_lines.append(f"Outlook: {data['outlook']}")
         else:
-            message = "MaizeConnect: Weather data currently syncing. Please wait 1 minute."
+            message_lines.append("MaizeConnect: Weather data currently syncing. Please wait 1 minute.")
 
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: {user_province} Inputs\n"
+            message_lines.append(f"MaizeConnect: {user_province} Inputs")
             for i, row in enumerate(data, 1):
                 try:
                     price_str = f"${float(row['price']):,.2f}"
                 except:
                     price_str = f"${row['price']}"
-                message += f"{i}. {row['item_name']}\n- Supplier: {row['supplier_name']} ({row['town']})\n- Price: {price_str}\n"
+                message_lines.append(f"{i}. {row['item_name']}")
+                message_lines.append("")
+                message_lines.append(f"Supplier: {row['supplier_name']} ({row['town']})")
+                message_lines.append(f"Price: {price_str}")
         else:
-             message = f"MaizeConnect: No input data for {user_province} today."
+             message_lines.append(f"MaizeConnect: No input data for {user_province} today.")
     
     conn.close()
+    
+    # Construct the final string using pure Python newline joins
+    final_message = "\n".join(message_lines)
     
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = sms.send(message.strip(), [phone_number])
+            response = sms.send(final_message, [phone_number])
             print(f"SMS queued to {phone_number} on attempt {attempt + 1}: {response}")
             break 
         except Exception as e:
@@ -519,7 +532,7 @@ def approve_agent(agent_id):
         return redirect('/dashboard?msg=UNAUTHORIZED+ACTION')
         
     conn = get_db_connection()
-    conn.execute("UPDATE admins SET status = 'approved' WHERE id = ?", (agent_id,))
+    conn.execute("UPDATE SET status = 'approved' WHERE id = ?", (agent_id,))
     conn.commit()
     conn.close()
     return redirect('/dashboard?msg=Agent+approved+successfully.')
@@ -647,16 +660,24 @@ def ussd_callback():
                                 
                                 response = f"END Listing successful. Buyers in {user['province']} will be notified."
                                 
-                                # UPGRADED LISTING SMS FORMATTING
                                 try:
                                     price_val = float(price)
                                     price_str = f"${price_val:,.2f}"
                                 except:
                                     price_str = f"${price}"
-                                demo_msg = f"MaizeConnect: Listing Active\n- Qty: {quantity}T\n- Price: {price_str}/Ton\n- Loc: {user['province']}"
+                                
+                                # UPGRADED LISTING SMS
+                                listing_lines = [
+                                    "MaizeConnect: Listing Active",
+                                    f"1. {quantity}T Maize",
+                                    "",
+                                    f"Location: {user['province']}",
+                                    f"Price: {price_str}/Ton"
+                                ]
+                                demo_msg = "\n".join(listing_lines)
                                 
                                 try:
-                                    sms.send(demo_msg.strip(), [phone_number])
+                                    sms.send(demo_msg, [phone_number])
                                 except Exception:
                                     pass
                                     
@@ -674,20 +695,28 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
-                                    # UPGRADED BUYER SMS FORMATTING
+                                    # UPGRADED BUYER SMS
+                                    buyer_lines = []
                                     if available_maize:
-                                        msg = f"MaizeConnect: {province} For Sale\n"
+                                        buyer_lines.append(f"MaizeConnect: {province} For Sale")
                                         for i, row in enumerate(available_maize, 1):
                                             try:
                                                 price_val = float(row['price_per_ton'])
                                                 price_str = f"${price_val:,.2f}"
                                             except:
                                                 price_str = f"${row['price_per_ton']}"
-                                            msg += f"{i}. {row['quantity_tons']}T @ {price_str}/Ton\n- Loc: {row['town']}\n- Call: {row['phone_number']}\n"
+                                            buyer_lines.append(f"{i}. {row['quantity_tons']}T Maize")
+                                            buyer_lines.append("")
+                                            buyer_lines.append(f"Location: {row['town']}")
+                                            buyer_lines.append(f"Price: {price_str}/Ton")
+                                            buyer_lines.append(f"Call: {row['phone_number']}")
                                     else:
-                                        msg = f"MaizeConnect: No open maize listings in {province} currently."
+                                        buyer_lines.append(f"MaizeConnect: No open maize listings in {province} currently.")
+                                    
+                                    final_buyer_msg = "\n".join(buyer_lines)
+                                    
                                     try:
-                                        sms.send(msg.strip(), [buyer_phone])
+                                        sms.send(final_buyer_msg, [buyer_phone])
                                     except Exception:
                                         pass
 
