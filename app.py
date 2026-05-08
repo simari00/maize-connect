@@ -118,10 +118,10 @@ def create_user(phone_number, full_name, pin, province, town, sec_question, sec_
     conn.commit()
     conn.close()
 
-# --- Automated Weather Sync Task ---
+# --- Automated Weather Sync Task (YEAR-ROUND DISASTER SCANNER) ---
 def fetch_national_weather():
-    """Fetches both 3-day live forecast AND statistical December outlook dynamically for the current year."""
-    print(f"[{datetime.now()}] Starting Dual API Weather Sync...")
+    """Fetches 3-day live forecast AND scans the entire year for peak rain and extreme disasters."""
+    print(f"[{datetime.now()}] Starting Dual API Weather Sync with Disaster Scanning...")
     
     VISUAL_CROSSING_KEY = os.getenv("VISUAL_CROSSING_KEY")
     if not VISUAL_CROSSING_KEY:
@@ -130,11 +130,10 @@ def fetch_national_weather():
 
     conn = get_db_connection()
     current_year = datetime.now().year
-    short_year = str(current_year)[-2:] 
     
     for key, (city_name, prov_name) in LOCATIONS.items():
         short_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
-        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{current_year}-12-01/{current_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
+        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{current_year}-01-01/{current_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
         
         try:
             short_resp = requests.get(short_url, timeout=10)
@@ -157,26 +156,64 @@ def fetch_national_weather():
             if long_resp.status_code == 200:
                 long_data = long_resp.json()
                 
-                total_rain = sum(day.get('precip', 0) for day in long_data['days'] if day.get('precip'))
-                avg_temp = sum(day.get('temp', 0) for day in long_data['days'] if day.get('temp')) / len(long_data['days'])
+                monthly_rain = {}
+                hail_months = set()
+                heat_months = set()
+                storm_months = set()
                 
-                if total_rain > 150:
-                    advice = "Heavy rains expected. High-yield maize ideal."
-                elif total_rain > 80:
-                    advice = "Normal rains expected. Good for standard maize."
-                else:
-                    advice = "Low rainfall expected. Drought-resistant crops advised."
-                    
-                outlook_text = f"Dec '{short_year} API Est: ~{round(total_rain)}mm rain, {round(avg_temp)}C Avg. {advice}"
-            else:
-                outlook_text = f"Dec '{short_year} API Est: Normal seasonal rains expected (Fallback)."
+                month_names = {'01':'Jan', '02':'Feb', '03':'Mar', '04':'Apr', '05':'May', '06':'Jun', 
+                               '07':'Jul', '08':'Aug', '09':'Sep', '10':'Oct', '11':'Nov', '12':'Dec'}
 
-            print(f"Live API Data & Dec '{short_year} Outlook fetched for {city_name}.")
+                for day in long_data['days']:
+                    if day.get('datetime'):
+                        month_num = day['datetime'][5:7] 
+                        monthly_rain[month_num] = monthly_rain.get(month_num, 0) + day.get('precip', 0)
+                        
+                        # --- EXTREME WEATHER TRAPS ---
+                        conditions = day.get('conditions', '').lower()
+                        preciptype = day.get('preciptype')
+                        
+                        if preciptype is None:
+                            preciptype = []
+                        elif isinstance(preciptype, str):
+                            preciptype = [preciptype.lower()]
+                        else:
+                            preciptype = [str(p).lower() for p in preciptype]
+                            
+                        month_name = month_names.get(month_num, '')
+                        
+                        if 'hail' in conditions or 'hail' in preciptype or 'ice' in preciptype:
+                            hail_months.add(month_name)
+                        if day.get('tempmax', 0) >= 38: # 38C+ triggers extreme heat stress for maize
+                            heat_months.add(month_name)
+                        if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: # High wind or 50mm+ daily flash flood risk
+                            storm_months.add(month_name)
+                
+                if monthly_rain:
+                    peak_month_num = max(monthly_rain, key=monthly_rain.get)
+                    peak_rain = monthly_rain[peak_month_num]
+                    peak_month = month_names.get(peak_month_num, 'Unknown')
+                    
+                    # Build Warnings String cleanly
+                    warnings = []
+                    if hail_months: warnings.append(f"Hail({','.join(sorted(list(hail_months)))})")
+                    if heat_months: warnings.append(f"Heat({','.join(sorted(list(heat_months)))})")
+                    if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
+                    
+                    warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
+                    
+                    outlook_text = f"{current_year}: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
+                else:
+                    outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+            else:
+                outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+
+            print(f"Live API Data & Disaster Scan fetched for {city_name}.")
 
         except Exception as e:
             print(f"Network Failure for {city_name}. Using Fallback Data.")
             forecast_text = "3-Day: Network Error. Using Fallback."
-            outlook_text = f"Dec '{short_year} API Est: Normal seasonal rains expected (Fallback)."
+            outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
             
         conn.execute('''
             INSERT INTO weather (province, town, forecast, outlook) 
@@ -532,7 +569,7 @@ def approve_agent(agent_id):
         return redirect('/dashboard?msg=UNAUTHORIZED+ACTION')
         
     conn = get_db_connection()
-    conn.execute("UPDATE SET status = 'approved' WHERE id = ?", (agent_id,))
+    conn.execute("UPDATE admins SET status = 'approved' WHERE id = ?", (agent_id,))
     conn.commit()
     conn.close()
     return redirect('/dashboard?msg=Agent+approved+successfully.')
