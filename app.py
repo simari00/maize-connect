@@ -118,10 +118,10 @@ def create_user(phone_number, full_name, pin, province, town, sec_question, sec_
     conn.commit()
     conn.close()
 
-# --- Automated Weather Sync Task (YEAR-ROUND DISASTER SCANNER) ---
+# --- Automated Weather Sync Task ---
 def fetch_national_weather():
-    """Fetches 3-day live forecast AND scans the entire year for peak rain and extreme disasters."""
-    print(f"[{datetime.now()}] Starting Dual API Weather Sync with Disaster Scanning...")
+    """Fetches both 3-day live forecast AND statistical December outlook dynamically for the current year."""
+    print(f"[{datetime.now()}] Starting Dual API Weather Sync...")
     
     VISUAL_CROSSING_KEY = os.getenv("VISUAL_CROSSING_KEY")
     if not VISUAL_CROSSING_KEY:
@@ -130,10 +130,14 @@ def fetch_national_weather():
 
     conn = get_db_connection()
     current_year = datetime.now().year
+    short_year = str(current_year)[-2:] 
+    
+    # FIX: Use historical data from last year to bypass the free tier 15-day limit
+    historical_year = current_year - 1
     
     for key, (city_name, prov_name) in LOCATIONS.items():
         short_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
-        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{current_year}-01-01/{current_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
+        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{historical_year}-12-01/{historical_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
         
         try:
             short_resp = requests.get(short_url, timeout=10)
@@ -156,64 +160,26 @@ def fetch_national_weather():
             if long_resp.status_code == 200:
                 long_data = long_resp.json()
                 
-                monthly_rain = {}
-                hail_months = set()
-                heat_months = set()
-                storm_months = set()
+                total_rain = sum(day.get('precip', 0) for day in long_data['days'] if day.get('precip'))
+                avg_temp = sum(day.get('temp', 0) for day in long_data['days'] if day.get('temp')) / len(long_data['days'])
                 
-                month_names = {'01':'Jan', '02':'Feb', '03':'Mar', '04':'Apr', '05':'May', '06':'Jun', 
-                               '07':'Jul', '08':'Aug', '09':'Sep', '10':'Oct', '11':'Nov', '12':'Dec'}
-
-                for day in long_data['days']:
-                    if day.get('datetime'):
-                        month_num = day['datetime'][5:7] 
-                        monthly_rain[month_num] = monthly_rain.get(month_num, 0) + day.get('precip', 0)
-                        
-                        # --- EXTREME WEATHER TRAPS ---
-                        conditions = day.get('conditions', '').lower()
-                        preciptype = day.get('preciptype')
-                        
-                        if preciptype is None:
-                            preciptype = []
-                        elif isinstance(preciptype, str):
-                            preciptype = [preciptype.lower()]
-                        else:
-                            preciptype = [str(p).lower() for p in preciptype]
-                            
-                        month_name = month_names.get(month_num, '')
-                        
-                        if 'hail' in conditions or 'hail' in preciptype or 'ice' in preciptype:
-                            hail_months.add(month_name)
-                        if day.get('tempmax', 0) >= 38: # 38C+ triggers extreme heat stress for maize
-                            heat_months.add(month_name)
-                        if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: # High wind or 50mm+ daily flash flood risk
-                            storm_months.add(month_name)
-                
-                if monthly_rain:
-                    peak_month_num = max(monthly_rain, key=monthly_rain.get)
-                    peak_rain = monthly_rain[peak_month_num]
-                    peak_month = month_names.get(peak_month_num, 'Unknown')
-                    
-                    # Build Warnings String cleanly
-                    warnings = []
-                    if hail_months: warnings.append(f"Hail({','.join(sorted(list(hail_months)))})")
-                    if heat_months: warnings.append(f"Heat({','.join(sorted(list(heat_months)))})")
-                    if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
-                    
-                    warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
-                    
-                    outlook_text = f"{current_year}: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
+                if total_rain > 150:
+                    advice = "Heavy rains expected. High-yield maize ideal."
+                elif total_rain > 80:
+                    advice = "Normal rains expected. Good for standard maize."
                 else:
-                    outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+                    advice = "Low rainfall expected. Drought-resistant crops advised."
+                    
+                outlook_text = f"Dec '{short_year} API Est: ~{round(total_rain)}mm rain, {round(avg_temp)}C Avg. {advice}"
             else:
-                outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+                outlook_text = f"Dec '{short_year} API Est: Normal seasonal rains expected (Fallback)."
 
-            print(f"Live API Data & Disaster Scan fetched for {city_name}.")
+            print(f"Live API Data & Dec '{short_year} Outlook fetched for {city_name}.")
 
         except Exception as e:
             print(f"Network Failure for {city_name}. Using Fallback Data.")
             forecast_text = "3-Day: Network Error. Using Fallback."
-            outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+            outlook_text = f"Dec '{short_year} API Est: Normal seasonal rains expected (Fallback)."
             
         conn.execute('''
             INSERT INTO weather (province, town, forecast, outlook) 
@@ -231,7 +197,7 @@ def fetch_national_weather():
     conn.close()
     print(f"Dual Weather Sync Complete for {current_year}.")
 
-# --- Asynchronous SMS Task (UPGRADED BULLETPROOF FORMATTING) ---
+# --- Asynchronous SMS Task (STRICT FORMATTING) ---
 def send_sms_async(phone_number, service_choice):
     """Fetches data from DB based on user's province and sends detailed SMS."""
     conn = get_db_connection()
@@ -242,60 +208,48 @@ def send_sms_async(phone_number, service_choice):
         return
 
     user_province = user['province']
-    message_lines = []
     
     if service_choice == '1':
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Markets")
+            message = f"MaizeConnect: {user_province} Markets\n"
             for i, row in enumerate(data, 1):
                 try:
                     price_str = f"${float(row['price_per_ton']):,.2f}"
                 except:
                     price_str = f"${row['price_per_ton']}"
-                message_lines.append(f"{i}. {row['market_name']}")
-                message_lines.append("")
-                message_lines.append(f"Location: {row['town']}")
-                message_lines.append(f"Price: {price_str}/Ton")
+                
+                message += f"{i}. {row['market_name']}\n\nLocation: {row['town']}\nPrice: {price_str}\n"
         else:
-            message_lines.append(f"MaizeConnect: No market data for {user_province} today.")
+            message = f"MaizeConnect: No market data for {user_province} today."
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Weather")
-            message_lines.append("")
-            message_lines.append(f"Forecast: {data['forecast']}")
-            message_lines.append("")
-            message_lines.append(f"Outlook: {data['outlook']}")
+            message = f"MaizeConnect: {user_province} Weather\n\nForecast: {data['forecast']}\n\nOutlook: {data['outlook']}"
         else:
-            message_lines.append("MaizeConnect: Weather data currently syncing. Please wait 1 minute.")
+            message = "MaizeConnect: Weather data currently syncing. Please wait 1 minute."
 
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Inputs")
+            message = f"MaizeConnect: {user_province} Inputs\n"
             for i, row in enumerate(data, 1):
                 try:
                     price_str = f"${float(row['price']):,.2f}"
                 except:
                     price_str = f"${row['price']}"
-                message_lines.append(f"{i}. {row['item_name']}")
-                message_lines.append("")
-                message_lines.append(f"Supplier: {row['supplier_name']} ({row['town']})")
-                message_lines.append(f"Price: {price_str}")
+                
+                message += f"{i}. {row['item_name']}\n\nSupplier: {row['supplier_name']}\nPrice: {price_str}\n"
         else:
-             message_lines.append(f"MaizeConnect: No input data for {user_province} today.")
+             message = f"MaizeConnect: No input data for {user_province} today."
     
     conn.close()
-    
-    # Construct the final string using pure Python newline joins
-    final_message = "\n".join(message_lines)
     
     max_retries = 3
     for attempt in range(max_retries):
         try:
-            response = sms.send(final_message, [phone_number])
+            response = sms.send(message.strip(), [phone_number])
             print(f"SMS queued to {phone_number} on attempt {attempt + 1}: {response}")
             break 
         except Exception as e:
@@ -703,18 +657,10 @@ def ussd_callback():
                                 except:
                                     price_str = f"${price}"
                                 
-                                # UPGRADED LISTING SMS
-                                listing_lines = [
-                                    "MaizeConnect: Listing Active",
-                                    f"1. {quantity}T Maize",
-                                    "",
-                                    f"Location: {user['province']}",
-                                    f"Price: {price_str}/Ton"
-                                ]
-                                demo_msg = "\n".join(listing_lines)
+                                demo_msg = f"MaizeConnect: Listing Active\n1. {quantity}T Maize\n\nLocation: {user['province']}\nPrice: {price_str}/Ton\n"
                                 
                                 try:
-                                    sms.send(demo_msg, [phone_number])
+                                    sms.send(demo_msg.strip(), [phone_number])
                                 except Exception:
                                     pass
                                     
@@ -732,28 +678,21 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
-                                    # UPGRADED BUYER SMS
-                                    buyer_lines = []
                                     if available_maize:
-                                        buyer_lines.append(f"MaizeConnect: {province} For Sale")
+                                        msg = f"MaizeConnect: {province} For Sale\n"
                                         for i, row in enumerate(available_maize, 1):
                                             try:
                                                 price_val = float(row['price_per_ton'])
                                                 price_str = f"${price_val:,.2f}"
                                             except:
                                                 price_str = f"${row['price_per_ton']}"
-                                            buyer_lines.append(f"{i}. {row['quantity_tons']}T Maize")
-                                            buyer_lines.append("")
-                                            buyer_lines.append(f"Location: {row['town']}")
-                                            buyer_lines.append(f"Price: {price_str}/Ton")
-                                            buyer_lines.append(f"Call: {row['phone_number']}")
+                                            
+                                            msg += f"{i}. {row['quantity_tons']}T Maize\n\nLocation: {row['town']}\nPrice: {price_str}/Ton\nCall: {row['phone_number']}\n"
                                     else:
-                                        buyer_lines.append(f"MaizeConnect: No open maize listings in {province} currently.")
-                                    
-                                    final_buyer_msg = "\n".join(buyer_lines)
+                                        msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     
                                     try:
-                                        sms.send(final_buyer_msg, [buyer_phone])
+                                        sms.send(msg.strip(), [buyer_phone])
                                     except Exception:
                                         pass
 
