@@ -210,25 +210,33 @@ def send_sms_async(phone_number, service_choice):
         # Added LIMIT 3 so SMS doesn't break character limits
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: MARKETS ({user_province})\n\n"
+            message = f"MaizeConnect: {user_province} Markets\n"
             for i, row in enumerate(data, 1):
-                message += f"{i}. {row['market_name']}\nLoc: {row['town']}\nPrice: ${row['price_per_ton']}/Ton\n\n"
+                try:
+                    price_str = f"${float(row['price_per_ton']):,.2f}"
+                except:
+                    price_str = f"${row['price_per_ton']}"
+                message += f"{i}. {row['market_name']}\n- Loc: {row['town']}\n- Price: {price_str}/Ton\n"
         else:
             message = f"MaizeConnect: No market data for {user_province} today."
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message = f"MaizeConnect: WEATHER ({user_province})\n\n{data['forecast']}\n\n{data['outlook']}"
+            message = f"MaizeConnect: {user_province} Weather\n- {data['forecast']}\n- {data['outlook']}"
         else:
             message = "MaizeConnect: Weather data currently syncing. Please wait 1 minute."
 
     elif service_choice == '3':
         data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message = f"MaizeConnect: INPUTS ({user_province})\n\n"
+            message = f"MaizeConnect: {user_province} Inputs\n"
             for i, row in enumerate(data, 1):
-                message += f"{i}. {row['item_name']}\nSupplier: {row['supplier_name']} ({row['town']})\nPrice: ${row['price']}\n\n"
+                try:
+                    price_str = f"${float(row['price']):,.2f}"
+                except:
+                    price_str = f"${row['price']}"
+                message += f"{i}. {row['item_name']}\n- Supplier: {row['supplier_name']} ({row['town']})\n- Price: {price_str}\n"
         else:
              message = f"MaizeConnect: No input data for {user_province} today."
     
@@ -638,7 +646,15 @@ def ussd_callback():
                                 conn.close()
                                 
                                 response = f"END Listing successful. Buyers in {user['province']} will be notified."
-                                demo_msg = f"MaizeConnect: LISTING ACTIVE\n\nQty: {quantity}T\nPrice: ${price}/Ton\nLocation: {user['province']}"
+                                
+                                # UPGRADED LISTING SMS FORMATTING
+                                try:
+                                    price_val = float(price)
+                                    price_str = f"${price_val:,.2f}"
+                                except:
+                                    price_str = f"${price}"
+                                demo_msg = f"MaizeConnect: Listing Active\n- Qty: {quantity}T\n- Price: {price_str}/Ton\n- Loc: {user['province']}"
+                                
                                 try:
                                     sms.send(demo_msg.strip(), [phone_number])
                                 except Exception:
@@ -658,10 +674,16 @@ def ussd_callback():
                                     ''', (province,)).fetchall()
                                     conn.close()
                                     
+                                    # UPGRADED BUYER SMS FORMATTING
                                     if available_maize:
-                                        msg = f"MaizeConnect: FOR SALE ({province})\n\n"
+                                        msg = f"MaizeConnect: {province} For Sale\n"
                                         for i, row in enumerate(available_maize, 1):
-                                            msg += f"{i}. {row['quantity_tons']}T @ ${row['price_per_ton']}/Ton\nLoc: {row['town']}\nCall: {row['phone_number']}\n\n"
+                                            try:
+                                                price_val = float(row['price_per_ton'])
+                                                price_str = f"${price_val:,.2f}"
+                                            except:
+                                                price_str = f"${row['price_per_ton']}"
+                                            msg += f"{i}. {row['quantity_tons']}T @ {price_str}/Ton\n- Loc: {row['town']}\n- Call: {row['phone_number']}\n"
                                     else:
                                         msg = f"MaizeConnect: No open maize listings in {province} currently."
                                     try:
@@ -676,7 +698,7 @@ def ussd_callback():
                 else:
                     response = "END Invalid PIN. Please try again."
 
-        # --- BRANCH 2: FOR forgot PIN ---
+        # --- BRANCH 2: FORGOT PIN ---
         elif text_array[0] == '2':
             if len(text_array) == 1:
                 response = f"CON Security Question:\n{user['security_question']}\n\nEnter your answer:"
