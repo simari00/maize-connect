@@ -53,7 +53,7 @@ sms = africastalking.SMS
 
 DB_PATH = 'maize_connect.db'
 
-# --- The National Location Map ---
+# --- The National Location Map & Fallback Routing Matrix ---
 LOCATIONS = {
     '1': ('Harare', 'Harare'),
     '2': ('Bulawayo', 'Bulawayo'),
@@ -67,6 +67,19 @@ LOCATIONS = {
     '10': ('Lupane', 'Matabeleland North')
 }
 
+NEIGHBORS = {
+    'Harare': ['Mashonaland East', 'Mashonaland West', 'Mashonaland Central'],
+    'Bulawayo': ['Matabeleland North', 'Matabeleland South', 'Midlands'],
+    'Manicaland': ['Mashonaland East', 'Masvingo'],
+    'Midlands': ['Mashonaland West', 'Mashonaland East', 'Masvingo', 'Matabeleland North', 'Matabeleland South'],
+    'Masvingo': ['Manicaland', 'Midlands', 'Matabeleland South', 'Mashonaland East'],
+    'Mashonaland West': ['Mashonaland Central', 'Midlands', 'Harare', 'Matabeleland North'],
+    'Mashonaland Central': ['Mashonaland West', 'Mashonaland East', 'Harare'],
+    'Mashonaland East': ['Harare', 'Mashonaland Central', 'Manicaland', 'Midlands', 'Masvingo'],
+    'Matabeleland South': ['Bulawayo', 'Matabeleland North', 'Midlands', 'Masvingo'],
+    'Matabeleland North': ['Bulawayo', 'Matabeleland South', 'Midlands', 'Mashonaland West']
+}
+
 # ==========================================
 # DUAL-ENGINE DATABASE WRAPPER
 # ==========================================
@@ -74,18 +87,15 @@ class DBWrapper:
     def __init__(self):
         self.db_url = os.getenv("DATABASE_URL")
         if self.db_url:
-            # If on Render, use PostgreSQL
             self.conn = psycopg2.connect(self.db_url, cursor_factory=RealDictCursor)
             self.is_pg = True
         else:
-            # If on local computer, use SQLite (kept your thread safety setting)
             self.conn = sqlite3.connect(DB_PATH, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row
             self.is_pg = False
 
     def execute(self, query, params=()):
         if self.is_pg:
-            # Automatically translates SQLite '?' into PostgreSQL '%s'
             query = query.replace('?', '%s')
             cursor = self.conn.cursor()
             cursor.execute(query, params)
@@ -118,7 +128,7 @@ def create_user(phone_number, full_name, pin, province, town, sec_question, sec_
     conn.commit()
     conn.close()
 
-# --- Automated Weather Sync Task (YEAR-ROUND DISASTER SCANNER) ---
+# --- Automated Tasks: Weather Sync & Listing Pruning ---
 def fetch_national_weather():
     """Fetches 3-day live forecast AND scans the entire year for peak rain and extreme disasters."""
     print(f"[{datetime.now()}] Starting Dual API Weather Sync with Disaster Scanning...")
@@ -169,24 +179,20 @@ def fetch_national_weather():
                         month_num = day['datetime'][5:7] 
                         monthly_rain[month_num] = monthly_rain.get(month_num, 0) + day.get('precip', 0)
                         
-                        # --- EXTREME WEATHER TRAPS ---
                         conditions = day.get('conditions', '').lower()
                         preciptype = day.get('preciptype')
                         
-                        if preciptype is None:
-                            preciptype = []
-                        elif isinstance(preciptype, str):
-                            preciptype = [preciptype.lower()]
-                        else:
-                            preciptype = [str(p).lower() for p in preciptype]
+                        if preciptype is None: preciptype = []
+                        elif isinstance(preciptype, str): preciptype = [preciptype.lower()]
+                        else: preciptype = [str(p).lower() for p in preciptype]
                             
                         month_name = month_names.get(month_num, '')
                         
                         if 'hail' in conditions or 'hail' in preciptype or 'ice' in preciptype:
                             hail_months.add(month_name)
-                        if day.get('tempmax', 0) >= 38: # 38C+ triggers extreme heat stress for maize
+                        if day.get('tempmax', 0) >= 38: 
                             heat_months.add(month_name)
-                        if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: # High wind or 50mm+ daily flash flood risk
+                        if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: 
                             storm_months.add(month_name)
                 
                 if monthly_rain:
@@ -194,24 +200,19 @@ def fetch_national_weather():
                     peak_rain = monthly_rain[peak_month_num]
                     peak_month = month_names.get(peak_month_num, 'Unknown')
                     
-                    # Build Warnings String cleanly
                     warnings = []
                     if hail_months: warnings.append(f"Hail({','.join(sorted(list(hail_months)))})")
                     if heat_months: warnings.append(f"Heat({','.join(sorted(list(heat_months)))})")
                     if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
                     
                     warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
-                    
                     outlook_text = f"{current_year}: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
                 else:
                     outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
             else:
                 outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
 
-            print(f"Live API Data & Disaster Scan fetched for {city_name}.")
-
         except Exception as e:
-            print(f"Network Failure for {city_name}. Using Fallback Data.")
             forecast_text = "3-Day: Network Error. Using Fallback."
             outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
             
@@ -231,7 +232,24 @@ def fetch_national_weather():
     conn.close()
     print(f"Dual Weather Sync Complete for {current_year}.")
 
-# --- Asynchronous SMS Task (UPGRADED BULLETPROOF FORMATTING) ---
+def auto_prune_listings():
+    """Background Task: Reverts stale PENDING listings and closes 7-day old OPEN listings to prevent double-booking."""
+    print(f"[{datetime.now()}] Running Auto-Prune & Soft Reserve Database Cleanup...")
+    conn = get_db_connection()
+    try:
+        if conn.is_pg:
+            conn.execute("UPDATE listings SET status = 'OPEN' WHERE status = 'PENDING' AND date_listed < NOW() - INTERVAL '1 day'")
+            conn.execute("UPDATE listings SET status = 'CLOSED' WHERE status = 'OPEN' AND date_listed < NOW() - INTERVAL '7 days'")
+        else:
+            conn.execute("UPDATE listings SET status = 'OPEN' WHERE status = 'PENDING' AND date_listed < datetime('now', '-1 day')")
+            conn.execute("UPDATE listings SET status = 'CLOSED' WHERE status = 'OPEN' AND date_listed < datetime('now', '-7 days')")
+        conn.commit()
+    except Exception as e:
+        print(f"Auto-Prune Error: {e}")
+    finally:
+        conn.close()
+
+# --- Asynchronous SMS Task ---
 def send_sms_async(phone_number, service_choice):
     """Fetches data from DB based on user's province and sends detailed SMS."""
     conn = get_db_connection()
@@ -247,49 +265,55 @@ def send_sms_async(phone_number, service_choice):
     if service_choice == '1':
         data = conn.execute('SELECT * FROM market_prices WHERE province = ? LIMIT 3', (user_province,)).fetchall()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Markets")
+            message_lines.append(f"MaizeConnect: {user_province} Markets\n")
             for i, row in enumerate(data, 1):
                 try:
                     price_str = f"${float(row['price_per_ton']):,.2f}"
                 except:
                     price_str = f"${row['price_per_ton']}"
                 message_lines.append(f"{i}. {row['market_name']}")
-                message_lines.append("")
-                message_lines.append(f"Location: {row['town']}")
-                message_lines.append(f"Price: {price_str}/Ton")
+                message_lines.append(f"   Loc: {row['town']}")
+                message_lines.append(f"   Price: {price_str}/Ton\n")
         else:
             message_lines.append(f"MaizeConnect: No market data for {user_province} today.")
 
     elif service_choice == '2':
         data = conn.execute('SELECT * FROM weather WHERE province = ? LIMIT 1', (user_province,)).fetchone()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Weather")
-            message_lines.append("")
-            message_lines.append(f"Forecast: {data['forecast']}")
-            message_lines.append("")
+            message_lines.append(f"MaizeConnect: {user_province} Weather\n")
+            message_lines.append(f"Forecast: {data['forecast']}\n")
             message_lines.append(f"Outlook: {data['outlook']}")
         else:
             message_lines.append("MaizeConnect: Weather data currently syncing. Please wait 1 minute.")
 
     elif service_choice == '3':
-        data = conn.execute('SELECT * FROM inputs WHERE province = ? LIMIT 3', (user_province,)).fetchall()
+        data = conn.execute('SELECT * FROM inputs WHERE province = ?', (user_province,)).fetchall()
         if data:
-            message_lines.append(f"MaizeConnect: {user_province} Inputs")
-            for i, row in enumerate(data, 1):
-                try:
-                    price_str = f"${float(row['price']):,.2f}"
-                except:
-                    price_str = f"${row['price']}"
-                message_lines.append(f"{i}. {row['item_name']}")
-                message_lines.append("")
-                message_lines.append(f"Supplier: {row['supplier_name']} ({row['town']})")
-                message_lines.append(f"Price: {price_str}")
+            message_lines.append(f"MaizeConnect: {user_province} Inputs\n")
+            
+            # INVISIBLE RELATIONAL GROUPING ALGORITHM
+            suppliers_dict = {}
+            for row in data:
+                sup_name = f"{row['supplier_name']} ({row['town']})"
+                if sup_name not in suppliers_dict:
+                    suppliers_dict[sup_name] = []
+                suppliers_dict[sup_name].append(row)
+            
+            counter = 1
+            for supplier, items in suppliers_dict.items():
+                message_lines.append(f"{supplier}:")
+                for item in items:
+                    try:
+                        price_str = f"${float(item['price']):,.2f}"
+                    except:
+                        price_str = f"${item['price']}"
+                    message_lines.append(f"  {counter}. {item['item_name']} - {price_str}")
+                    counter += 1
+                message_lines.append("") 
         else:
              message_lines.append(f"MaizeConnect: No input data for {user_province} today.")
     
     conn.close()
-    
-    # Construct the final string using pure Python newline joins
     final_message = "\n".join(message_lines)
     
     max_retries = 3
@@ -703,11 +727,9 @@ def ussd_callback():
                                 except:
                                     price_str = f"${price}"
                                 
-                                # UPGRADED LISTING SMS
                                 listing_lines = [
                                     "MaizeConnect: Listing Active",
-                                    f"1. {quantity}T Maize",
-                                    "",
+                                    f"1. {quantity}T Maize\n",
                                     f"Location: {user['province']}",
                                     f"Price: {price_str}/Ton"
                                 ]
@@ -720,36 +742,67 @@ def ussd_callback():
                                     
                         elif service_choice == '5':
                             if len(text_array) == 3:
-                                response = "END Searching for available maize in your region. You will receive an SMS shortly."
+                                response = "END Searching for available maize. You will receive an SMS shortly."
                                 
-                                def send_buyer_sms(buyer_phone, province):
+                                def send_buyer_sms(buyer_phone, original_province):
                                     conn = get_db_connection()
-                                    available_maize = conn.execute('''
-                                        SELECT phone_number, quantity_tons, price_per_ton, town 
-                                        FROM listings 
-                                        WHERE province = ? AND status = 'OPEN' 
-                                        ORDER BY date_listed DESC LIMIT 3
-                                    ''', (province,)).fetchall()
-                                    conn.close()
                                     
-                                    # UPGRADED BUYER SMS
+                                    # FALLBACK ALGORITHM (CROSS-PROVINCE ROUTING)
+                                    search_province = original_province
+                                    available_maize = conn.execute('''
+                                        SELECT id, phone_number, quantity_tons, price_per_ton, town 
+                                        FROM listings WHERE province = ? AND status = 'OPEN' 
+                                        ORDER BY date_listed DESC LIMIT 3
+                                    ''', (search_province,)).fetchall()
+                                    
+                                    if not available_maize:
+                                        neighbors = NEIGHBORS.get(original_province, [])
+                                        for neighbor in neighbors:
+                                            available_maize = conn.execute('''
+                                                SELECT id, phone_number, quantity_tons, price_per_ton, town 
+                                                FROM listings WHERE province = ? AND status = 'OPEN' 
+                                                ORDER BY date_listed DESC LIMIT 3
+                                            ''', (neighbor,)).fetchall()
+                                            
+                                            if available_maize:
+                                                search_province = neighbor
+                                                break
+                                    
                                     buyer_lines = []
                                     if available_maize:
-                                        buyer_lines.append(f"MaizeConnect: {province} For Sale")
+                                        if search_province == original_province:
+                                            buyer_lines.append(f"MaizeConnect: {search_province} For Sale\n")
+                                        else:
+                                            buyer_lines.append(f"MaizeConnect: No listings in {original_province}. Found nearby in {search_province}:\n")
+                                            
+                                        listing_ids = []
                                         for i, row in enumerate(available_maize, 1):
+                                            listing_ids.append(str(row['id']))
                                             try:
                                                 price_val = float(row['price_per_ton'])
                                                 price_str = f"${price_val:,.2f}"
                                             except:
                                                 price_str = f"${row['price_per_ton']}"
-                                            buyer_lines.append(f"{i}. {row['quantity_tons']}T Maize")
-                                            buyer_lines.append("")
+                                            buyer_lines.append(f"{i}. {row['quantity_tons']}T Maize\n")
                                             buyer_lines.append(f"Location: {row['town']}")
                                             buyer_lines.append(f"Price: {price_str}/Ton")
-                                            buyer_lines.append(f"Call: {row['phone_number']}")
+                                            buyer_lines.append(f"Call: {row['phone_number']}\n")
+                                            
+                                        # SOFT RESERVE (AUTO-PRUNE PENDING STATE)
+                                        if listing_ids:
+                                            placeholders = ','.join(['?'] * len(listing_ids))
+                                            if conn.is_pg:
+                                                query = f"UPDATE listings SET status = 'PENDING' WHERE id IN ({placeholders})"
+                                                query = query.replace('?', '%s')
+                                                cursor = conn.conn.cursor()
+                                                cursor.execute(query, listing_ids)
+                                            else:
+                                                conn.execute(f"UPDATE listings SET status = 'PENDING' WHERE id IN ({placeholders})", listing_ids)
+                                            conn.commit()
                                     else:
-                                        buyer_lines.append(f"MaizeConnect: No open maize listings in {province} currently.")
+                                        buyer_lines.append(f"MaizeConnect: No open maize listings in {original_province} or neighboring regions currently.")
                                     
+                                    conn.close()
                                     final_buyer_msg = "\n".join(buyer_lines)
                                     
                                     try:
@@ -843,6 +896,7 @@ if __name__ == '__main__':
     scheduler = BackgroundScheduler(daemon=True)
     
     scheduler.add_job(fetch_national_weather, 'cron', hour=6, minute=0)
+    scheduler.add_job(auto_prune_listings, 'cron', minute=0) # Prunes stale data every hour
     scheduler.add_job(fetch_national_weather, 'date', run_date=datetime.now())
     scheduler.start()
 
