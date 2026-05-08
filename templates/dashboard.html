@@ -98,7 +98,6 @@
             max-width: 400px; margin-bottom: 15px; font-size: 0.95rem;
         }
 
-        /* NEW UPGRADE: Main Boss Expandable Button */
         .toggle-btn {
             background-color: #27ae60; color: white; padding: 15px; border-radius: 6px; cursor: pointer;
             font-weight: bold; width: 100%; text-align: left; margin-top: 20px; display: flex; justify-content: space-between; align-items: center; font-size: 1.1rem;
@@ -110,7 +109,7 @@
            ========================================== */
         .table-container {
             width: 100%;
-            max-height: 350px; /* Forces scroll for 10000+ records */
+            max-height: 350px; 
             overflow-y: auto;
             border-radius: 6px;
             border: 1px solid var(--border);
@@ -122,7 +121,6 @@
         table { width: 100%; border-collapse: collapse; min-width: 700px; }
         th, td { padding: 14px; text-align: left; border-bottom: 1px solid var(--border); font-size: 0.95rem; }
         
-        /* Sticky Headers so they stay visible when scrolling */
         th { 
             position: sticky; top: 0; background-color: #f8fafc; color: var(--primary); 
             font-weight: 700; white-space: nowrap; z-index: 10; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); 
@@ -265,6 +263,7 @@
 
         <div class="card">
             <h2 class="card-header">2. Farming Inputs Database</h2>
+            
             <form action="/admin/input" method="POST">
                 <div class="form-grid">
                     <div class="input-group">
@@ -288,19 +287,28 @@
                             <input type="hidden" name="province" value="{{ current_user.province }}">
                         {% endif %}
                     </div>
+                    
                     <div class="input-group">
                         <label>Town / City Name:</label>
                         <input type="text" name="town" id="input_town" placeholder="e.g., Mvurwi" required>
                     </div>
-                    <div class="input-group">
-                        <label>Supplier Name:</label>
-                        <input type="text" name="supplier" id="input_supplier" placeholder="e.g., Farm & City" required>
+
+                    <div class="input-group full-width" style="background-color: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border);">
+                        <label>Supplier Name (Shop):</label>
+                        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                            <select id="supplier_dropdown" style="flex: 1;" onchange="syncSupplier()">
+                                <option value="" disabled selected>-- Select an Existing Registered Shop --</option>
+                                </select>
+                            <button type="button" class="btn-main" style="width: auto; margin-top: 0; background-color: var(--success);" onclick="toggleNewShop()" id="newShopBtn">➕ Register New</button>
+                        </div>
+                        <input type="text" name="supplier" id="input_supplier" placeholder="Type new supplier shop name..." required style="background-color: #e2e8f0;" readonly>
+                        <small style="color: var(--text-muted); margin-top: 5px;">Select an existing shop to auto-fill details, or click "Register New" to manually add a new location.</small>
                     </div>
                     <div class="input-group">
                         <label>Item Description:</label>
                         <input type="text" name="item" id="input_item" placeholder="e.g., SeedCo Pan 53 - 25kg" required>
                     </div>
-                    <div class="input-group full-width">
+                    <div class="input-group">
                         <label>Price ($):</label>
                         <input type="text" name="price" id="input_price" placeholder="e.g., 115.00" required>
                     </div>
@@ -454,7 +462,8 @@
                     </table>
                 </div>
             </div>
-            </div>
+
+        </div>
         {% endif %}
 
     </div>
@@ -467,7 +476,7 @@
             let table = document.getElementById(tableId);
             let tr = table.getElementsByTagName("tr");
 
-            for (let i = 1; i < tr.length; i++) { // Skip the header row
+            for (let i = 1; i < tr.length; i++) { 
                 let td = tr[i].getElementsByTagName("td");
                 let rowContainsFilter = false;
                 for (let j = 0; j < td.length; j++) {
@@ -482,7 +491,78 @@
             }
         }
 
-        // Toggles visibility of Main Boss sections
+        // JS Logic for the Relational Supplier Input
+        document.addEventListener("DOMContentLoaded", function() {
+            const table = document.getElementById("tableInput");
+            const dropdown = document.getElementById("supplier_dropdown");
+            const seen = new Set();
+
+            if(table && dropdown) {
+                const rows = table.getElementsByTagName("tr");
+                for(let i=1; i<rows.length; i++) {
+                    const cells = rows[i].getElementsByTagName("td");
+                    if(cells.length > 3) {
+                        const province = cells[0].innerText.trim();
+                        const town = cells[1].innerText.trim();
+                        const supplier = cells[2].innerText.trim();
+                        
+                        const key = supplier + "|" + town;
+                        if(!seen.has(key)) {
+                            seen.add(key);
+                            const opt = document.createElement("option");
+                            opt.value = supplier;
+                            opt.dataset.town = town;
+                            opt.dataset.province = province;
+                            opt.text = supplier + " (" + town + ")";
+                            dropdown.add(opt);
+                        }
+                    }
+                }
+            }
+        });
+
+        function syncSupplier() {
+            const dropdown = document.getElementById("supplier_dropdown");
+            const selected = dropdown.options[dropdown.selectedIndex];
+            
+            const inputSupplier = document.getElementById("input_supplier");
+            const inputTown = document.getElementById("input_town");
+            const inputProvince = document.getElementById("input_province");
+
+            if(selected.value) {
+                inputSupplier.value = selected.value;
+                inputSupplier.readOnly = true;
+                inputSupplier.style.backgroundColor = "#e2e8f0";
+                
+                inputTown.value = selected.dataset.town;
+                inputProvince.value = selected.dataset.province;
+            }
+        }
+
+        function toggleNewShop() {
+            const inputSupplier = document.getElementById("input_supplier");
+            const dropdown = document.getElementById("supplier_dropdown");
+            const btn = document.getElementById("newShopBtn");
+
+            if(inputSupplier.readOnly) {
+                // Switch to Manual Entry Mode
+                inputSupplier.readOnly = false;
+                inputSupplier.value = "";
+                inputSupplier.style.backgroundColor = "#ffffff";
+                document.getElementById("input_town").value = "";
+                dropdown.selectedIndex = 0;
+                btn.innerHTML = "✖ Cancel";
+                btn.style.backgroundColor = "var(--danger)";
+            } else {
+                // Switch back to Dropdown Mode
+                inputSupplier.readOnly = true;
+                inputSupplier.style.backgroundColor = "#e2e8f0";
+                inputSupplier.value = "";
+                btn.innerHTML = "➕ Register New";
+                btn.style.backgroundColor = "var(--success)";
+            }
+        }
+
         function toggleSection(sectionId) {
             const section = document.getElementById(sectionId);
             if (section.style.display === "none") {
@@ -518,7 +598,13 @@
         function editInput(province, town, supplier, item, price) {
             document.getElementById('input_province').value = province;
             document.getElementById('input_town').value = town;
-            document.getElementById('input_supplier').value = supplier;
+            
+            // Force text mode for easy editing
+            const inputSupplier = document.getElementById('input_supplier');
+            inputSupplier.value = supplier;
+            inputSupplier.readOnly = false;
+            inputSupplier.style.backgroundColor = "#ffffff";
+            
             document.getElementById('input_item').value = item;
             document.getElementById('input_price').value = price;
             
