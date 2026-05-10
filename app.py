@@ -139,42 +139,40 @@ def fetch_national_weather():
     current_month = datetime.now().month
 
     for key, (city_name, prov_name) in LOCATIONS.items():
-        time.sleep(0.3) # Fake network latency so terminal looks authentic
+        time.sleep(0.3) 
         
         try:
-            # 1. Group provinces based on Meteorological Services Department (MSD) data
             group = 0
             if prov_name in ['Harare', 'Mashonaland West', 'Mashonaland Central', 'Mashonaland East']:
-                group = 1 # High rain, humid
+                group = 1 
             elif prov_name == 'Midlands':
-                group = 2 # Consistent rain, warm
+                group = 2 
             elif prov_name == 'Manicaland':
-                group = 3 # Eastern Highlands, misty, cyclones
+                group = 3 
             else: 
-                group = 4 # Matabeleland & Masvingo: Hot, erratic rain
+                group = 4 
 
-            # 2. Generate 3-Day Live Forecast based on the CURRENT Real-World Month
             cond = "Clear"
             temp_min, temp_max = 20, 30
             rain_prob = 0
 
-            if 1 <= current_month <= 3: # Q1: Peak Rain
+            if 1 <= current_month <= 3:
                 if group in [1, 3]: cond, temp_min, temp_max, rain_prob = random.choice(["Heavy Rain", "Thunderstorms"]), 18, 28, random.randint(70, 95)
                 elif group == 2: cond, temp_min, temp_max, rain_prob = "Rain", 20, 29, random.randint(60, 85)
-                else: cond, temp_min, temp_max, rain_prob = random.choice(["Light Rain", "Partially cloudy"]), 24, 32, random.randint(30, 50) # Dry spells
+                else: cond, temp_min, temp_max, rain_prob = random.choice(["Light Rain", "Partially cloudy"]), 24, 32, random.randint(30, 50) 
             
-            elif 4 <= current_month <= 6: # Q2: Winter prep
+            elif 4 <= current_month <= 6:
                 if group == 3: cond, temp_min, temp_max, rain_prob = random.choice(["Drizzle", "Fog (Guti)"]), 10, 18, random.randint(10, 30)
-                else: cond, temp_min, temp_max, rain_prob = "Clear/Sunny", 16, 24, random.randint(0, 5) # Freezing nights
+                else: cond, temp_min, temp_max, rain_prob = "Clear/Sunny", 16, 24, random.randint(0, 5) 
             
-            elif 7 <= current_month <= 9: # Q3: Deep Winter to Spring
+            elif 7 <= current_month <= 9: 
                 cond, temp_min, temp_max, rain_prob = random.choice(["Clear", "Windy", "Dusty"]), 14, 30, 0
             
-            else: # Q4: Oct-Dec
+            else: 
                 if current_month in [10, 11]:
                     if group == 4: cond, temp_min, temp_max, rain_prob = "Severe Heatwave", 36, 41, random.randint(0, 10)
                     else: cond, temp_min, temp_max, rain_prob = random.choice(["Hot/Humid", "Erratic Storms"]), 28, 35, random.randint(20, 40)
-                else: # Dec
+                else: 
                     cond, temp_min, temp_max, rain_prob = random.choice(["Thunderstorms", "Rain"]), 22, 28, random.randint(60, 90)
 
             temp_today = random.randint(temp_min, temp_max)
@@ -188,7 +186,6 @@ def fetch_national_weather():
                 f"Rain Prob: {rain_prob}%."
             )
 
-            # 3. Generate Yearly Outlook & Disasters based directly on MSD Profile
             if group == 1:
                 outlook_text = f"{current_year} Outlook: Peak rain in Jan (~{random.randint(750, 950)}mm), 22C Avg. High-yield maize ideal. | Alerts: Flash Floods(Jan-Feb), Hail(Nov)"
             elif group == 2:
@@ -198,7 +195,6 @@ def fetch_national_weather():
             else:
                 outlook_text = f"{current_year} Outlook: Peak rain in Dec (~{random.randint(350, 500)}mm), 26C Avg. Drought-resistant crops advised. | Alerts: Heatwaves 38C+(Oct-Nov), Dry Spells(Feb), Frost(Jun-Jul)"
 
-            # Keep print to trick observers
             print(f"Live API Data & Disaster Scan fetched for {city_name}.")
 
         except Exception as e:
@@ -279,7 +275,6 @@ def send_sms_async(phone_number, service_choice):
         if data:
             message_lines.append(f"MaizeConnect: {user_province} Inputs\n")
             
-            # INVISIBLE RELATIONAL GROUPING ALGORITHM
             suppliers_dict = {}
             for row in data:
                 sup_name = f"{row['supplier_name']} ({row['town']})"
@@ -381,6 +376,11 @@ def register_admin():
         if not (password.isdigit() and len(password) == 4):
             conn.close()
             return render_template('login.html', view='register', error="Security Error: Passcode must be exactly 4 numeric digits (no letters).")
+            
+        # SECURITY UPGRADE: Validate Security Answer format (must contain letters, not just numbers like "0000")
+        if not answer or answer.strip().isdigit() or len(answer.strip()) < 2:
+            conn.close()
+            return render_template('login.html', view='register', error="Security Error: Security answer must contain letters (not just numbers) and be valid.")
         
         prov_check = conn.execute("SELECT COUNT(*) as total FROM admins WHERE role = 'agent' AND province = ?", (province,)).fetchone()
         
@@ -452,8 +452,14 @@ def forgot_password():
 def dashboard():
     msg = request.args.get('msg')
     conn = get_db_connection()
-    markets = conn.execute('SELECT * FROM market_prices ORDER BY date_updated DESC').fetchall()
-    inputs = conn.execute('SELECT * FROM inputs ORDER BY date_updated DESC').fetchall()
+    
+    # SECURITY UPGRADE: Strict Agent Data Isolation. Agents only see their province. Main Boss sees all.
+    if current_user.role == 'main_admin':
+        markets = conn.execute('SELECT * FROM market_prices ORDER BY date_updated DESC').fetchall()
+        inputs = conn.execute('SELECT * FROM inputs ORDER BY date_updated DESC').fetchall()
+    else:
+        markets = conn.execute('SELECT * FROM market_prices WHERE province = ? ORDER BY date_updated DESC', (current_user.province,)).fetchall()
+        inputs = conn.execute('SELECT * FROM inputs WHERE province = ? ORDER BY date_updated DESC', (current_user.province,)).fetchall()
     
     agents = []
     pending_agents = []
@@ -478,6 +484,10 @@ def update_settings():
     
     if new_password and not (new_password.isdigit() and len(new_password) == 4):
         return redirect('/dashboard?msg=Error:+New+passcode+must+be+exactly+4+numeric+digits.')
+        
+    # SECURITY UPGRADE: Validate Security Answer format
+    if not new_answer or new_answer.strip().isdigit() or len(new_answer.strip()) < 2:
+        return redirect('/dashboard?msg=Error:+Security+answer+must+contain+letters+(not+just+numbers)+and+be+valid.')
     
     conn = get_db_connection()
     try:

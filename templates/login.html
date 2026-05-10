@@ -47,7 +47,7 @@
                     <option value="What was the name of your first school?">What was the name of your first school?</option>
                 </select>
                 
-                <input type="text" name="security_answer" placeholder="Security Answer" required>
+                <input type="text" name="security_answer" placeholder="Security Answer" pattern=".*[a-zA-Z]+.*" title="Must contain letters, not just numbers" minlength="2" required>
                 <button type="submit">Create Account</button>
             </form>
             <a href="/login" class="link">Back to Login</a>

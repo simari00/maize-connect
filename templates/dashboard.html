@@ -180,7 +180,7 @@
                     </div>
                     <div class="input-group">
                         <label>New Security Answer:</label>
-                        <input type="text" name="security_answer" placeholder="Provide answer for recovery" required>
+                        <input type="text" name="security_answer" placeholder="Provide answer for recovery" pattern=".*[a-zA-Z]+.*" title="Must contain letters, not just numbers" minlength="2" required>
                     </div>
                 </div>
                 <button type="submit" class="btn-main full-width" style="background-color: var(--primary);">Update My Profile</button>
