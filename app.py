@@ -142,9 +142,64 @@ def fetch_national_weather():
     current_year = datetime.now().year
     historical_year = current_year - 1 # Bypass API future limits by using 365-day verified historical data
     
+    # 1. FETCH NATIONAL 365-DAY OUTLOOK ONCE TO PREVENT EXCEEDING 1000-RECORD FREE TIER QUOTA
+    outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+    try:
+        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/Harare,ZW/{historical_year}-01-01/{historical_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
+        long_resp = requests.get(long_url, timeout=15)
+        
+        if long_resp.status_code == 200:
+            long_data = long_resp.json()
+            
+            monthly_rain = {}
+            hail_months = set()
+            heat_months = set()
+            storm_months = set()
+            
+            month_names = {'01':'Jan', '02':'Feb', '03':'Mar', '04':'Apr', '05':'May', '06':'Jun', 
+                           '07':'Jul', '08':'Aug', '09':'Sep', '10':'Oct', '11':'Nov', '12':'Dec'}
+
+            for day in long_data['days']:
+                if day.get('datetime'):
+                    month_num = day['datetime'][5:7] 
+                    monthly_rain[month_num] = monthly_rain.get(month_num, 0) + day.get('precip', 0)
+                    
+                    conditions = day.get('conditions', '').lower()
+                    preciptype = day.get('preciptype')
+                    
+                    if preciptype is None: preciptype = []
+                    elif isinstance(preciptype, str): preciptype = [preciptype.lower()]
+                    else: preciptype = [str(p).lower() for p in preciptype]
+                        
+                    month_name = month_names.get(month_num, '')
+                    
+                    if 'hail' in conditions or 'hail' in preciptype or 'ice' in preciptype:
+                        hail_months.add(month_name)
+                    if day.get('tempmax', 0) >= 38: 
+                        heat_months.add(month_name)
+                    if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: 
+                        storm_months.add(month_name)
+            
+            if monthly_rain:
+                peak_month_num = max(monthly_rain, key=monthly_rain.get)
+                peak_rain = monthly_rain[peak_month_num]
+                peak_month = month_names.get(peak_month_num, 'Unknown')
+                
+                warnings = []
+                if hail_months: warnings.append(f"Hail({','.join(sorted(list(hail_months)))})")
+                if heat_months: warnings.append(f"Heat({','.join(sorted(list(heat_months)))})")
+                if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
+                
+                warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
+                outlook_text = f"{current_year}: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
+        
+        print("National 365-day API scan completed successfully.")
+    except Exception as e:
+        print(f"National Scan Failed: {e}")
+
+    # 2. FETCH 3-DAY LOCAL FORECASTS FOR ALL PROVINCES
     for key, (city_name, prov_name) in LOCATIONS.items():
         short_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
-        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{historical_year}-01-01/{historical_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
         
         try:
             short_resp = requests.get(short_url, timeout=10)
@@ -163,59 +218,11 @@ def fetch_national_weather():
             else:
                 forecast_text = "3-Day: API Error. Using Fallback."
 
-            long_resp = requests.get(long_url, timeout=15)
-            if long_resp.status_code == 200:
-                long_data = long_resp.json()
-                
-                monthly_rain = {}
-                hail_months = set()
-                heat_months = set()
-                storm_months = set()
-                
-                month_names = {'01':'Jan', '02':'Feb', '03':'Mar', '04':'Apr', '05':'May', '06':'Jun', 
-                               '07':'Jul', '08':'Aug', '09':'Sep', '10':'Oct', '11':'Nov', '12':'Dec'}
-
-                for day in long_data['days']:
-                    if day.get('datetime'):
-                        month_num = day['datetime'][5:7] 
-                        monthly_rain[month_num] = monthly_rain.get(month_num, 0) + day.get('precip', 0)
-                        
-                        conditions = day.get('conditions', '').lower()
-                        preciptype = day.get('preciptype')
-                        
-                        if preciptype is None: preciptype = []
-                        elif isinstance(preciptype, str): preciptype = [preciptype.lower()]
-                        else: preciptype = [str(p).lower() for p in preciptype]
-                            
-                        month_name = month_names.get(month_num, '')
-                        
-                        if 'hail' in conditions or 'hail' in preciptype or 'ice' in preciptype:
-                            hail_months.add(month_name)
-                        if day.get('tempmax', 0) >= 38: 
-                            heat_months.add(month_name)
-                        if day.get('windspeed', 0) >= 60 or day.get('precip', 0) >= 50: 
-                            storm_months.add(month_name)
-                
-                if monthly_rain:
-                    peak_month_num = max(monthly_rain, key=monthly_rain.get)
-                    peak_rain = monthly_rain[peak_month_num]
-                    peak_month = month_names.get(peak_month_num, 'Unknown')
-                    
-                    warnings = []
-                    if hail_months: warnings.append(f"Hail({','.join(sorted(list(hail_months)))})")
-                    if heat_months: warnings.append(f"Heat({','.join(sorted(list(heat_months)))})")
-                    if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
-                    
-                    warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
-                    outlook_text = f"{current_year} Outlook: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
-                else:
-                    outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
-            else:
-                outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
+            print(f"Local 3-Day API Data fetched for {city_name}.")
 
         except Exception as e:
+            print(f"Network Failure for {city_name}. Using Fallback Data.")
             forecast_text = "3-Day: Network Error. Using Fallback."
-            outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
             
         conn.execute('''
             INSERT INTO weather (province, town, forecast, outlook) 
@@ -227,7 +234,7 @@ def fetch_national_weather():
             date_updated=CURRENT_TIMESTAMP
         ''', (prov_name, city_name, forecast_text, outlook_text))
         
-        time.sleep(1) 
+        time.sleep(0.5) 
             
     conn.commit()
     conn.close()
