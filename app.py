@@ -140,10 +140,11 @@ def fetch_national_weather():
 
     conn = get_db_connection()
     current_year = datetime.now().year
+    historical_year = current_year - 1 # Bypass API future limits by using 365-day verified historical data
     
     for key, (city_name, prov_name) in LOCATIONS.items():
         short_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
-        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{current_year}-01-01/{current_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
+        long_url = f"https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/{city_name},ZW/{historical_year}-01-01/{historical_year}-12-31?unitGroup=metric&key={VISUAL_CROSSING_KEY}"
         
         try:
             short_resp = requests.get(short_url, timeout=10)
@@ -206,7 +207,7 @@ def fetch_national_weather():
                     if storm_months: warnings.append(f"Storms({','.join(sorted(list(storm_months)))})")
                     
                     warning_str = f" | Alerts: {' '.join(warnings)}" if warnings else " | Clear year ahead."
-                    outlook_text = f"{current_year}: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
+                    outlook_text = f"{current_year} Outlook: Peak rain {peak_month} (~{round(peak_rain)}mm){warning_str}"
                 else:
                     outlook_text = f"{current_year} Outlook: Normal seasonal rains expected (Fallback)."
             else:
@@ -747,7 +748,6 @@ def ussd_callback():
                                 def send_buyer_sms(buyer_phone, original_province):
                                     conn = get_db_connection()
                                     
-                                    # FALLBACK ALGORITHM (CROSS-PROVINCE ROUTING)
                                     search_province = original_province
                                     available_maize = conn.execute('''
                                         SELECT id, phone_number, quantity_tons, price_per_ton, town 
@@ -788,7 +788,6 @@ def ussd_callback():
                                             buyer_lines.append(f"Price: {price_str}/Ton")
                                             buyer_lines.append(f"Call: {row['phone_number']}\n")
                                             
-                                        # SOFT RESERVE (AUTO-PRUNE PENDING STATE)
                                         if listing_ids:
                                             placeholders = ','.join(['?'] * len(listing_ids))
                                             if conn.is_pg:
